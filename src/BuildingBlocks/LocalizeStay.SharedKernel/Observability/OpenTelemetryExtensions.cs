@@ -39,7 +39,8 @@ public static class OpenTelemetryExtensions
         tracing.SetResourceBuilder(resourceBuilder)
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
-            .AddSource("LocalizeStay.Inventory.Upstream");
+            .AddSource("LocalizeStay.Inventory.Upstream")
+            .AddSource("LocalizeStay.Inventory.Lifecycle");
 
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {
@@ -51,7 +52,8 @@ public static class OpenTelemetryExtensions
     {
         metrics.SetResourceBuilder(resourceBuilder)
             .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation();
+            .AddHttpClientInstrumentation()
+            .AddMeter("LocalizeStay.Inventory.Lifecycle");
 
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {

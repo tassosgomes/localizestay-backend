@@ -390,7 +390,6 @@ Sugestão de melhoria no:
 - TechSpec: N/A
 - Template de Task: N/A
 - Skill: N/A
-
 ---
 
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0
@@ -688,6 +687,173 @@ Total de Problemas: 0
 Categoria Técnica mais frequente: N/A
 Origem mais frequente: N/A
 Indício de fragilidade estrutural? Não — a regressão de `null` explícito em PATCH possui cobertura HTTP para ambos os campos anuláveis.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 9.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Teste / Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: As suítes obrigatórias `PropertyOnboardingWorkflowTests` e `OutboxAndAuditTests` não foram criadas. Os filtros de integração terminam sem executar cenários, deixando sem evidência o fluxo HTTP, a autorização, a atomicidade PostgreSQL de estado+audit+outbox, retry, conflito de payload, devolução e novo ciclo após encerramento.
+
+2. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Submit e devolução fazem consulta de idempotência antes de inserir, mas não convertem uma colisão concorrente do índice único em replay ou `409 STATE_CONFLICT`. A segunda requisição simultânea pode receber `DbUpdateException`/500, violando a garantia de idempotência.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2
+Categoria Técnica mais frequente: Teste inadequado / Erro de integração
+Origem mais frequente: Task mal fragmentada / Lacuna na TechSpec
+Indício de fragilidade estrutural? Sim
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Definir o comportamento de concorrência da chave de idempotência e exigir que colisões de unicidade sejam convertidas em replay ou `STATE_CONFLICT`.
+- Template de Task: Exigir que filtros de testes indicados na tarefa tenham ao menos um teste descoberto, além do exit code.
+- Skill: `dotnet-testing` pode reforçar testes de integração de concorrência e rollback transacional com PostgreSQL.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 9.0 (Revalidação pós-correção)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Falha de validação
+   Severidade: Baixa
+   Fase Detectada: Build
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet format LocalizeStay.sln --verify-no-changes --no-restore` falhou porque a migration `20260719184815_AddIdempotencyPayloadFingerprint.cs` contém um charset/BOM inválido na linha 1, coluna 1.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Falha de validação
+Origem mais frequente: Contexto insuficiente
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: Incluir `dotnet format --verify-no-changes` como gate antes de solicitar a validação.
+- Skill: `dotnet-code-quality` pode reforçar a preservação de UTF-8 sem BOM em arquivos C# novos.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 9.0 (Revalidação pós-correção de BOM)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `PropertyOnboardingCommands` cria `ActivitySource` e `Meter` com o nome `LocalizeStay.Inventory.Lifecycle`, mas `OpenTelemetryExtensions` registra somente o source `LocalizeStay.Inventory.Upstream` e não registra nenhum meter do lifecycle. Logo, o span de submit e os counters de sucesso, bloqueio e falha de outbox da subtarefa 9.6 não são coletados nem exportados.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Erro de integração
+Origem mais frequente: Lacuna na TechSpec
+Indício de fragilidade estrutural? Sim — há instrumento manual sem teste de captura nem registro no provedor OpenTelemetry.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Declarar explicitamente os nomes de source/meter e sua inclusão no pipeline OpenTelemetry.
+- Template de Task: Exigir teste que observe cada span e métrica manual especificada.
+- Skill: `dotnet-observability` pode reforçar a verificação de `AddSource` e `AddMeter` ao criar instrumentação manual.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 9.0 (Revalidação pós-correção de telemetria)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Falha de validação
+   Severidade: Baixa
+   Fase Detectada: Build
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet format LocalizeStay.sln --verify-no-changes --no-restore` falhou porque `tests/LocalizeStay.UnitTests/Inventory/SubmissionCommandHandlerTests.cs` possui imports fora da ordem de formatação, na linha 1, coluna 1.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Falha de validação
+Origem mais frequente: Contexto insuficiente
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: Exigir execução do gate de formatação imediatamente antes de solicitar validação.
+- Skill: `dotnet-code-quality` pode reforçar organização de imports em testes novos.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 9.0 (Revalidação final)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 5
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — as correções de concorrência, atomicidade, telemetria e formatação possuem cobertura nos gates exigidos.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 9.0 (Validação independente)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 1
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — foram verificados o rollback transacional, a concorrência idempotente, o contrato HTTP e o registro do source/meter de lifecycle.
 Sugestão de melhoria no:
 - PRD: N/A
 - TechSpec: N/A

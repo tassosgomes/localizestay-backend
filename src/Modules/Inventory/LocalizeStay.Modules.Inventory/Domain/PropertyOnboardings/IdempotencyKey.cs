@@ -12,6 +12,7 @@ internal sealed class IdempotencyKey
     internal Guid PropertyOnboardingId { get; private set; }
     internal Guid Key { get; private set; }
     internal IdempotencyScope Scope { get; private set; }
+    internal string? PayloadFingerprint { get; private set; }
     internal DateTimeOffset CreatedAt { get; private set; }
 
     private IdempotencyKey()
@@ -22,7 +23,8 @@ internal sealed class IdempotencyKey
         Guid propertyOnboardingId,
         Guid key,
         IdempotencyScope scope,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string? payloadFingerprint = null)
     {
         return new IdempotencyKey
         {
@@ -30,6 +32,7 @@ internal sealed class IdempotencyKey
             PropertyOnboardingId = propertyOnboardingId,
             Key = key,
             Scope = scope,
+            PayloadFingerprint = payloadFingerprint,
             CreatedAt = createdAt.ToUniversalTime(),
         };
     }

@@ -207,3 +207,39 @@ internal sealed class CreateDuplicateReviewCommandValidator : AbstractValidator<
         RuleFor(command => command.Justification).NotEmpty().Length(10, 1000); RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
     }
 }
+
+internal sealed class SubmitToCurationCommandValidator : AbstractValidator<SubmitToCurationCommand>
+{
+    public SubmitToCurationCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty();
+        RuleFor(command => command.IdempotencyKey).NotEmpty();
+        RuleFor(command => command.DecisionNote).NotEmpty().Length(3, 1000);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateCurationReturnCommandValidator : AbstractValidator<CreateCurationReturnCommand>
+{
+    public CreateCurationReturnCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty(); RuleFor(command => command.IdempotencyKey).NotEmpty();
+        RuleFor(command => command.CurationReference).MaximumLength(120).When(command => command.CurationReference is not null);
+        RuleFor(command => command.ReasonCode).Must(value => new[] { "missingData", "inconsistentData" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.Reason).NotEmpty().Length(3, 1000);
+        RuleFor(command => command.Issues).NotEmpty();
+        RuleForEach(command => command.Issues).ChildRules(issue => { issue.RuleFor(item => item.Description).NotEmpty().Length(3, 1000); issue.RuleFor(item => item.OwnerType).Must(value => Enum.TryParse<Domain.PropertyOnboardings.PendingOwnerType>(value, true, out _)); issue.RuleFor(item => item.RelatedGateType).Must(value => value is null || Enum.TryParse<Domain.PropertyOnboardings.ReadinessGateType>(value, true, out _)); });
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class ClosePropertyOnboardingCommandValidator : AbstractValidator<ClosePropertyOnboardingCommand>
+{
+    public ClosePropertyOnboardingCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty();
+        RuleFor(command => command.ReasonCode).Must(value => new[] { "partnerWithdrawal", "eligibilityFailure", "noResponse", "duplicateProperty", "commercialDecision", "other" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.Reason).NotEmpty().Length(10, 1000);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}

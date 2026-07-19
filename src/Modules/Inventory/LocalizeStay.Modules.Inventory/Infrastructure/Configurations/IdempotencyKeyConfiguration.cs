@@ -26,6 +26,10 @@ internal sealed class IdempotencyKeyConfiguration : IEntityTypeConfiguration<Ide
             .HasColumnName("created_at")
             .IsRequired();
 
+        builder.Property(key => key.PayloadFingerprint)
+            .HasColumnName("payload_fingerprint")
+            .HasMaxLength(64);
+
         builder.HasIndex(key => new { key.PropertyOnboardingId, key.Key, key.Scope })
             .IsUnique()
             .HasDatabaseName("ix_idempotency_keys_property_onboarding_id_key_scope");
