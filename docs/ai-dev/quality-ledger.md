@@ -109,3 +109,76 @@ Sugestão de melhoria no:
 - Template de Task: Adicionar nota sobre quando validar atomicidade transacional real (InMemory vs Testcontainers) para evitar confusão sobre cobertura de testes.
 - Skill: `dotnet-testing` poderia registrar o pattern "InMemory não valida transações — atomicidade real exige Testcontainers" como referência recorrente.
 
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 3.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Violação de padrão arquitetural / qualidade de código
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Skill / Task (a própria task 3.0 cita "classes acima de 300 linhas" como anti-padrão)
+   Necessitou Reimplementação Significativa? Sim (refatoração estrutural — extrair tipos auxiliares e reduzir classe principal)
+   Descrição: A classe `PropertyOnboarding` possui 441 linhas, violando o limite de 300 linhas definido pelo skill `dotnet-code-quality` e pela convenção explícita da task 3.0. Os tipos `IdempotencyScope`, `BlockingReasonCode`, `BlockingReason` e `IdempotentReplayException` no final do arquivo devem ser extraídos para arquivos próprios, e a classe principal ainda precisará ser reduzida.
+
+2. Categoria Técnica: Lógica incorreta
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: PRD / Task
+   Necessitou Reimplementação Significativa? Sim (ajuste de invariante de domínio + teste regressivo)
+   Descrição: `PropertyOnboarding.SubmitDuplicateReview` permite a decisão `DuplicateOfExistingProperty` mesmo quando `DuplicateReviewRequiresDecision == false`. A validação atual só rejeita `NotDuplicate` sem flag. Isso contradiz o PRD RF-03 (duplicidade deve ser sinalizada antes da revisão) e a subtarefa 3.6 (transições permitidas). Deve exigir a flag para qualquer decisão de revisão.
+
+3. Categoria Técnica: Lógica incorreta (consistência de estado)
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `FlagDuplicateReviewRequired` altera `DuplicateReviewRequiresDecision` mas não atualiza `UpdatedAt`, diferentemente de todos os outros métodos de mutação do agregado.
+
+4. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Faltam testes regressivos para os problemas acima: `DuplicateOfExistingProperty` sem flag, `FlagDuplicateReviewRequired` atualizando timestamp, `RejectGate`/`ResetGateToPending` no `PropertyOnboarding`, e `GetBlockingReasons` quando `SubmittedToCuration`.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4
+Categoria Técnica mais frequente: Violação de padrão / Lógica incorreta
+Origem mais frequente: Task
+Indício de fragilidade estrutural? Sim — a classe `PropertyOnboarding` já nasce com 441 linhas e apresenta uma invariante de domínio inconsistente (revisão de duplicidade sem sinalização prévia), indicando que o modelo precisa de refatoração antes de ser consumido pelas tarefas 4.0+.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Considerar incluir um diagrama de estados/transições do `PropertyOnboarding` para deixar explícitas as transições permitidas (ex: revisão de duplicidade só após sinalização).
+- Template de Task: Adicionar check automático/implícito de limite de tamanho de classe (≤ 300 linhas) ao critério de qualidade.
+- Skill: `dotnet-code-quality` poderia incluir exemplo concreto de como quebrar uma classe de agregado grande em value objects/serviços de domínio sem violar a regra de "domínio puro".
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 3.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — todas as correções solicitadas na iteração anterior foram aplicadas: `PropertyOnboarding` reduzido para 279 linhas, `SubmitDuplicateReview` exige flag para qualquer decisão, `FlagDuplicateReviewRequired` atualiza `UpdatedAt`, e testes regressivos foram adicionados e passam.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Considerar incluir um diagrama de estados/transições do `PropertyOnboarding` para deixar explícitas as transições permitidas (ex: revisão de duplicidade só após sinalização).
+- Template de Task: Adicionar check automático/implícito de limite de tamanho de classe (≤ 300 linhas) ao critério de qualidade.
+- Skill: `dotnet-code-quality` poderia incluir exemplo concreto de como quebrar uma classe de agregado grande em value objects/serviços de domínio sem violar a regra de "domínio puro".
+
