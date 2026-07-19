@@ -1,5 +1,6 @@
 using LocalizeStay.Modules.Inventory.Endpoints;
 using LocalizeStay.Modules.Inventory.Infrastructure;
+using LocalizeStay.SharedKernel.Auditing;
 using LocalizeStay.SharedKernel.DependencyInjection;
 using LocalizeStay.SharedKernel.Modules;
 using Microsoft.AspNetCore.Routing;
@@ -21,6 +22,10 @@ public sealed class InventoryModule : IModule
     {
         services.AddModuleDatabase<InventoryDbContext>(configuration, InventoryDbContext.SchemaName);
         services.AddModuleHandlers(typeof(InventoryModule).Assembly);
+        // BusinessAuditWriter<InventoryDbContext> tracks entries on this module's own DbContext
+        // without committing, so mutations and their audit rows share a single SaveChangesAsync
+        // (ADR-003: ownership da auditoria por módulo).
+        services.AddBusinessAuditWriter<InventoryDbContext>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

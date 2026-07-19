@@ -73,3 +73,39 @@ Sugestão de melhoria no:
 - Skill: O `dotnet-production-readiness` poderia registrar o padrão positivo implementado nesta task (default seguro + override por ambiente) como referência reutilizável.
 
 Iterações até estabilização: 2
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 2.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Edge case ignorado (PII)
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (lacuna — task cita "telefone" nas convenções mas não exige regex específica)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `BusinessAuditEntry.LooksLikePersonalData` cobre e-mail, CPF formatado e CNPJ formatado, mas não telefone nem CPF/CNPJ não-formatados. Mitigado pela whitelist de 12 chaves de negócio (`_approvedMetadataKeys`) que só aceita identificadores de negócio; o regex atua como defesa em profundidade. Recomenda-se estender patterns em tarefa futura de hardening (4.0+).
+
+2. Categoria Técnica: Teste inadequado (limitação aceitável)
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Skill (limitação do provider EF InMemory)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `Record_should_let_savechanges_round_trip_the_entry_in_the_same_transaction` usa EF Core InMemory, que não valida semântica transacional real (rollback conjunto). Cobertura transacional efetiva ficará para os testes de integração com PostgreSQL/Testcontainers previstos para a Task 8.0, conforme sequenciamento da TechSpec.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum bloqueante)
+Categoria Técnica mais frequente: Edge case / limitação de teste
+Origem mais frequente: Task / Skill
+Indício de fragilidade estrutural? Não — implementação coesa com ADR-003, fronteiras modulares respeitadas (`InventoryDbContext` interno, `InternalsVisibleTo` restrito a UnitTests), invariantes e whitelist corretos, contrato sem SaveChanges verificado por teste.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Considerar mencionar explicitamente patterns PII adicionais (telefone, documentos não-formatados) quando a tarefa listar "telefone" nas convenções de sanitização.
+- Template de Task: Adicionar nota sobre quando validar atomicidade transacional real (InMemory vs Testcontainers) para evitar confusão sobre cobertura de testes.
+- Skill: `dotnet-testing` poderia registrar o pattern "InMemory não valida transações — atomicidade real exige Testcontainers" como referência recorrente.
+
