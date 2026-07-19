@@ -4,6 +4,34 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 6.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A subtarefa 6.5 exige evidência para normalização, conflito concorrente, patch parcial, paginação, máscara e 401/403. Os testes entregues cobrem normalização, duplicidade prévia, patch parcial no handler e máscara em listagem de um único registro, mas não cobrem conflito concorrente contra o índice único PostgreSQL, paginação com múltiplos resultados, nem respostas 401/403 nos endpoints `/api/v1/partners`.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Explicitar os cenários HTTP mínimos de autorização, concorrência e paginação no plano de testes da fatia de parceiros.
+- Template de Task: Converter os itens de cobertura em casos nomeados de teste para evitar handoff sem todos os cenários verificáveis.
+- Skill: `dotnet-testing` pode reforçar que índices únicos e authorization policies exigem cenários de integração reais.
+
+---
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 5.0 (Revalidação)
 
 Modelo utilizado:
@@ -315,6 +343,30 @@ Total de Problemas: 0
 Categoria Técnica mais frequente: N/A
 Origem mais frequente: N/A
 Indício de fragilidade estrutural? Não — os feedbacks anteriores foram resolvidos; as opções obrigatórias são testadas como ausentes e inconsistentes, e a solução atende à formatação exigida.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 6.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — os cenários de integração ausentes foram acrescentados e passaram: concorrência no índice único PostgreSQL, paginação real e autorização 401/403.
 Sugestão de melhoria no:
 - PRD: N/A
 - TechSpec: N/A
