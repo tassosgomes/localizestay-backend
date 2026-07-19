@@ -1,0 +1,23 @@
+name: localizestay-backend
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: localizestay-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: localizestay
+      POSTGRES_USER: localizestay
+      POSTGRES_PASSWORD: localizestay
+    ports:
+      - "5432:5432"
+    volumes:
+      - localizestay-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U localizestay -d localizestay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  localizestay-postgres-data:

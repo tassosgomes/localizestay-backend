@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>LocalizeStay.Contracts.Booking</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\LocalizeStay.SharedKernel\LocalizeStay.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Company>LocalizeStay</Company>
+    <Product>LocalizeStay</Product>
+  </PropertyGroup>
+
+  <!--
+    Modules default to internal visibility for Domain/Application/Infrastructure types (dotnet-code-quality +
+    architecture-baseline: only the *.Contracts assembly is public). InternalsVisibleTo below is scoped per
+    project via ItemGroup in each module csproj, not globally, to avoid leaking internals across modules.
+  -->
+
+</Project>

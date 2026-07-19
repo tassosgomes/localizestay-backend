@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>LocalizeStay.ArchitectureTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="AwesomeAssertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\LocalizeStay.SharedKernel\LocalizeStay.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\LocalizeStay.Api\LocalizeStay.Api.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Discovery\LocalizeStay.Modules.Discovery\LocalizeStay.Modules.Discovery.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Discovery\LocalizeStay.Modules.Discovery.Contracts\LocalizeStay.Modules.Discovery.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\LocalizeStay.Modules.Inventory\LocalizeStay.Modules.Inventory.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\LocalizeStay.Modules.Inventory.Contracts\LocalizeStay.Modules.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Booking\LocalizeStay.Modules.Booking\LocalizeStay.Modules.Booking.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Booking\LocalizeStay.Modules.Booking.Contracts\LocalizeStay.Modules.Booking.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payments\LocalizeStay.Modules.Payments\LocalizeStay.Modules.Payments.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payments\LocalizeStay.Modules.Payments.Contracts\LocalizeStay.Modules.Payments.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CustomerCare\LocalizeStay.Modules.CustomerCare\LocalizeStay.Modules.CustomerCare.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CustomerCare\LocalizeStay.Modules.CustomerCare.Contracts\LocalizeStay.Modules.CustomerCare.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Curation\LocalizeStay.Modules.Curation\LocalizeStay.Modules.Curation.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Curation\LocalizeStay.Modules.Curation.Contracts\LocalizeStay.Modules.Curation.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Operations\LocalizeStay.Modules.Operations\LocalizeStay.Modules.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Operations\LocalizeStay.Modules.Operations.Contracts\LocalizeStay.Modules.Operations.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\IdentityAccess\LocalizeStay.Modules.IdentityAccess\LocalizeStay.Modules.IdentityAccess.csproj" />
+    <ProjectReference Include="..\..\src\Modules\IdentityAccess\LocalizeStay.Modules.IdentityAccess.Contracts\LocalizeStay.Modules.IdentityAccess.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Insights\LocalizeStay.Modules.Insights\LocalizeStay.Modules.Insights.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Insights\LocalizeStay.Modules.Insights.Contracts\LocalizeStay.Modules.Insights.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
