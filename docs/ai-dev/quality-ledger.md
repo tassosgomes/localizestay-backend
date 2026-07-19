@@ -4,6 +4,48 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Teste / Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: As suítes obrigatórias `ReadinessCommandHandlerTests` e `PropertyOnboardingSubresourceEndpointsTests` não existem. Os filtros previstos na tarefa terminam sem executar cenários; faltam evidências para a matriz dos seis gates, erro `INVALID_GATE_EVIDENCE`, SLA de quatro horas úteis, resolução/cancelamento e idempotência HTTP.
+
+2. Categoria Técnica: Falha de validação
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O handler aceita qualquer `authorizedContact` e cria evidência sintética `formal-authorization`; não exige nem preserva referência de autorização formal ou contratual, contrariando RF-02.
+
+3. Categoria Técnica: Lógica incorreta
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: A atualização de `signedContract` descarta `contractNumber`, `signedAt` e `responsibleParties`, persistindo somente `repositoryReference`; os campos também não são validados como necessários. O `ContractReference` exigido pela tarefa não é preservado.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3
+Categoria Técnica mais frequente: Falha de validação / lógica incorreta / teste inadequado (1 de cada)
+Origem mais frequente: Lacuna na TechSpec (2)
+Indício de fragilidade estrutural? Sim
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Definir o modelo persistido de `ContractReference` e o formato verificável da autorização formal/contratual para evitar evidência sintética.
+- Template de Task: Exigir a presença das classes de teste nomeadas antes do handoff e tratar filtro sem teste correspondente como falha.
+- Skill: `dotnet-testing` pode orientar a verificação explícita de que filtros de testes selecionaram casos reais.
+
+---
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 6.0
 
 Modelo utilizado:
@@ -351,6 +393,48 @@ Sugestão de melhoria no:
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Violação de padrão arquitetural
+   Severidade: Alta
+   Fase Detectada: Teste
+   Origem Provável: Skill insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A migration AddReadinessGateContractReference foi declarada pública em Inventory.Infrastructure, violando a regra de encapsulamento e fazendo a suíte completa falhar.
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A cobertura exigida para idempotência da revisão de duplicidade e encerramento como duplicada não foi implementada.
+
+3. Categoria Técnica: Falha de validação
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: OperationalChannelTest.TestedAt é obrigatório no contrato, porém não é validado pelo UpdateReadinessGateCommandValidator.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Sim — a suíte focada passa, mas não cobre a regra arquitetural nem a idempotência contratual.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar validação de presença para todos os campos obrigatórios condicionais do gate operacional.
+- Template de Task: Exigir que cenários obrigatórios de idempotência tenham teste nomeado.
+- Skill: dotnet-testing pode reforçar a execução da suíte completa quando migrations alteram Infrastructure.
+
+---
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 7.0
 
 Modelo utilizado:
@@ -524,6 +608,86 @@ Total de Problemas: 0
 Categoria Técnica mais frequente: N/A
 Origem mais frequente: N/A
 Indício de fragilidade estrutural? Não — a regressão contratual de `duplicateReview` passou a ter cobertura HTTP dos campos obrigatórios de `DuplicateCandidate` e de `latestDecision`.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Falha de validação
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `CreateCommunicationRecordCommandValidator` aceita `receivedAt` e `processedAt` ausentes. Como ambos desserializam como `DateTimeOffset.MinValue` e a única regra é `processedAt >= receivedAt`, o handler pode persistir uma comunicação em `0001-01-01`, contrariando os campos obrigatórios do contrato e invalidando a medição de SLA.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Falha de validação
+Origem mais frequente: Lacuna na TechSpec
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Explicitar a validação de presença dos timestamps obrigatórios de comunicação, além da ordem cronológica.
+- Template de Task: Exigir cenário HTTP para cada campo obrigatório não anulável que possa receber valor default durante a desserialização.
+- Skill: `dotnet-testing` pode reforçar testes de campos obrigatórios em requests Minimal API.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0 (Revalidação final)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Erro de integração
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O contrato de atualização de pendência permite `assigneeId` e `targetAt` nulos, mas o command perde a presença do campo e trata null como omissão. Portanto, o cliente não consegue limpar a atribuição ou a data-alvo por PATCH.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Erro de integração
+Origem mais frequente: Lacuna na TechSpec
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a semântica de atualização para campos anuláveis e a distinção entre omissão e null explícito em PATCH.
+- Template de Task: Exigir cenário HTTP de limpeza para cada campo anulável em requests PATCH.
+- Skill: `dotnet-testing` pode reforçar testes de semântica PATCH (omissão versus null).
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0 (Revalidação pós-correção de PATCH anulável)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 3
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — a regressão de `null` explícito em PATCH possui cobertura HTTP para ambos os campos anuláveis.
 Sugestão de melhoria no:
 - PRD: N/A
 - TechSpec: N/A

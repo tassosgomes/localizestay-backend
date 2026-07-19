@@ -21,6 +21,7 @@ internal static class InventoryEndpoints
 
         endpoints.MapPartnerEndpoints();
         endpoints.MapPropertyOnboardingEndpoints();
+        endpoints.MapPropertyOnboardingSubresourceEndpoints();
     }
 
     private static async Task<InventoryModuleStatusResponse> GetModuleStatusAsync(

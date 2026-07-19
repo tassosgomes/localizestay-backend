@@ -30,6 +30,14 @@ internal sealed class ReadinessGateConfiguration : IEntityTypeConfiguration<Read
         builder.Property(gate => gate.ValidatedBy).HasColumnName("validated_by").HasMaxLength(200);
         builder.Property(gate => gate.UpdatedAt).HasColumnName("updated_at").IsRequired();
 
+        builder.OwnsOne(gate => gate.ContractReference, contract =>
+        {
+            contract.Property(reference => reference.RepositoryReference).HasColumnName("contract_repository_reference").HasMaxLength(500);
+            contract.Property(reference => reference.ContractNumber).HasColumnName("contract_number").HasMaxLength(80);
+            contract.Property(reference => reference.SignedAt).HasColumnName("contract_signed_at");
+            contract.PrimitiveCollection(reference => reference.ResponsibleParties).HasColumnName("contract_responsible_parties").HasColumnType("jsonb");
+        });
+
         builder.Property<Guid>("PropertyOnboardingId").IsRequired();
 
         builder.OwnsMany(gate => gate.Evidence, evidence =>

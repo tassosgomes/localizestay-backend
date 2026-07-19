@@ -6,6 +6,7 @@ internal sealed class ReadinessGate
     internal ReadinessGateType Type { get; private set; }
     internal ReadinessGateStatus Status { get; private set; }
     internal string? Notes { get; private set; }
+    internal ContractReference? ContractReference { get; private set; }
     internal IReadOnlyList<EvidenceReference> Evidence => _evidence.AsReadOnly();
     internal DateTimeOffset? ValidatedAt { get; private set; }
     internal string? ValidatedBy { get; private set; }
@@ -28,19 +29,29 @@ internal sealed class ReadinessGate
         };
     }
 
-    internal void Validate(IReadOnlyList<EvidenceReference> evidence, string validatedBy, DateTimeOffset validatedAt)
+    internal void Validate(IReadOnlyList<EvidenceReference> evidence, ContractReference? contractReference, string validatedBy, DateTimeOffset validatedAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(validatedBy);
         ArgumentNullException.ThrowIfNull(evidence);
 
         ValidateEvidenceForType(evidence);
+        if (Type == ReadinessGateType.SignedContract && contractReference is null)
+            throw new ArgumentException("Signed contract gate requires a contract reference.", nameof(contractReference));
 
         _evidence.Clear();
         _evidence.AddRange(evidence);
+        ContractReference = contractReference;
         Status = ReadinessGateStatus.Validated;
         ValidatedAt = validatedAt.ToUniversalTime();
         ValidatedBy = validatedBy.Trim();
         UpdatedAt = validatedAt.ToUniversalTime();
+    }
+
+    internal void Validate(IReadOnlyList<EvidenceReference> evidence, string validatedBy, DateTimeOffset validatedAt)
+    {
+        var contractEvidence = Type == ReadinessGateType.SignedContract ? evidence.FirstOrDefault(item => item.Kind == EvidenceKind.Contract) : null;
+        var contractReference = contractEvidence is null ? null : new ContractReference(contractEvidence.Reference, "legacy-reference", validatedAt, ["Legacy contract party"]);
+        Validate(evidence, contractReference, validatedBy, validatedAt);
     }
 
     internal void Reject(string notes, DateTimeOffset updatedAt)
@@ -51,6 +62,7 @@ internal sealed class ReadinessGate
         Notes = notes.Trim();
         ValidatedAt = null;
         ValidatedBy = null;
+        ContractReference = null;
         UpdatedAt = updatedAt.ToUniversalTime();
     }
 
@@ -61,6 +73,7 @@ internal sealed class ReadinessGate
         ValidatedAt = null;
         ValidatedBy = null;
         _evidence.Clear();
+        ContractReference = null;
         UpdatedAt = updatedAt.ToUniversalTime();
     }
 

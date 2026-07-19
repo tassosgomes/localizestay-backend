@@ -21,7 +21,7 @@ internal sealed class CommunicationRecord
         DateTimeOffset receivedAt,
         DateTimeOffset processedAt,
         string resultSummary,
-        TimeSpan sla,
+        bool processedWithinSla,
         string createdBy,
         DateTimeOffset createdAt)
     {
@@ -43,9 +43,12 @@ internal sealed class CommunicationRecord
             ReceivedAt = receivedUtc,
             ProcessedAt = processedUtc,
             ResultSummary = resultSummary.Trim(),
-            ProcessedWithinSla = processedUtc <= receivedUtc.Add(sla),
+            ProcessedWithinSla = processedWithinSla,
             CreatedBy = createdBy.Trim(),
             CreatedAt = createdAt.ToUniversalTime(),
         };
     }
+
+    internal static CommunicationRecord Create(Guid id, CommunicationChannel channel, DateTimeOffset receivedAt, DateTimeOffset processedAt, string resultSummary, TimeSpan sla, string createdBy, DateTimeOffset createdAt)
+        => Create(id, channel, receivedAt, processedAt, resultSummary, processedAt <= receivedAt.Add(sla), createdBy, createdAt);
 }

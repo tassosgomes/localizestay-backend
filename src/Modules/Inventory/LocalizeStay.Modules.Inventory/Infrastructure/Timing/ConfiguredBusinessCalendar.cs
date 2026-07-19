@@ -69,13 +69,16 @@ internal sealed class ConfiguredBusinessCalendar : IBusinessCalendar
     }
 
     public bool IsWithinBusinessHoursSla(DateTimeOffset receivedAtUtc)
+        => IsWithinBusinessHoursSla(receivedAtUtc, _clock.UtcNow);
+
+    public bool IsWithinBusinessHoursSla(DateTimeOffset receivedAtUtc, DateTimeOffset processedAtUtc)
     {
-        if (receivedAtUtc > _clock.UtcNow)
+        if (receivedAtUtc > processedAtUtc)
         {
-            return true;
+            return false;
         }
 
-        return CalculateBusinessDuration(receivedAtUtc, _clock.UtcNow) <= _communicationSla;
+        return CalculateBusinessDuration(receivedAtUtc, processedAtUtc) <= _communicationSla;
     }
 
     private TimeSpan CalculateBusinessDuration(DateTimeOffset startUtc, DateTimeOffset endUtc)

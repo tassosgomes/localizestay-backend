@@ -124,3 +124,86 @@ internal sealed class ListPropertyOnboardingsQueryValidator : AbstractValidator<
         RuleFor(query => query.Order).Must(value => value is null || new[] { "asc", "desc" }.Contains(value, StringComparer.OrdinalIgnoreCase));
     }
 }
+
+internal sealed class UpdateReadinessGateCommandValidator : AbstractValidator<UpdateReadinessGateCommand>
+{
+    private static readonly string[] _gateTypes = ["legalIdentification", "commercialTerms", "signedContract", "authorizedContact", "propertyBasics", "operationalChannel"];
+    public UpdateReadinessGateCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty();
+        RuleFor(command => command.GateType).Must(value => _gateTypes.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.Status).Must(value => new[] { "pending", "validated", "rejected" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.Notes).NotEmpty().MaximumLength(1000).When(command => string.Equals(command.Status, "rejected", StringComparison.OrdinalIgnoreCase));
+        RuleFor(command => command.ContractReference!.RepositoryReference).NotEmpty().MaximumLength(500).When(command => command.ContractReference is not null);
+        RuleFor(command => command.ContractReference!.ContractNumber).MaximumLength(80).When(command => command.ContractReference?.ContractNumber is not null);
+        RuleFor(command => command.ContractReference!.SignedAt).NotEmpty().When(command => command.ContractReference is not null);
+        RuleFor(command => command.ContractReference!.ResponsibleParties).NotEmpty().When(command => command.ContractReference is not null);
+        RuleForEach(command => command.ContractReference!.ResponsibleParties).NotEmpty().MaximumLength(180).When(command => command.ContractReference is not null);
+        RuleFor(command => command.AuthorizedContact!).SetValidator(new ContactInputValidator()).When(command => command.AuthorizedContact is not null);
+        RuleFor(command => command.OperationalChannelTest!.Channel).Must(value => value is not null && new[] { "whatsapp", "email" }.Contains(value, StringComparer.OrdinalIgnoreCase)).When(command => command.OperationalChannelTest is not null);
+        RuleFor(command => command.OperationalChannelTest!.Contact).NotEmpty().MaximumLength(180).When(command => command.OperationalChannelTest is not null);
+        RuleFor(command => command.OperationalChannelTest!.TestedAt).NotEqual(default(DateTimeOffset)).When(command => command.OperationalChannelTest is not null);
+        RuleFor(command => command.OperationalChannelTest!.ResultSummary).NotEmpty().MaximumLength(500).When(command => command.OperationalChannelTest is not null);
+        RuleForEach(command => command.Evidence!).SetValidator(new EvidenceReferenceInputValidator()).When(command => command.Evidence is not null);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class EvidenceReferenceInputValidator : AbstractValidator<EvidenceReferenceInput>
+{
+    public EvidenceReferenceInputValidator()
+    {
+        RuleFor(input => input.Kind).Must(value => new[] { "officialDocument", "contract", "formalAuthorization", "communication", "other" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(input => input.Reference).NotEmpty().MaximumLength(500);
+        RuleFor(input => input.Description).NotEmpty().MaximumLength(300);
+    }
+}
+
+internal sealed class CreatePendingIssueCommandValidator : AbstractValidator<CreatePendingIssueCommand>
+{
+    public CreatePendingIssueCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty(); RuleFor(command => command.Description).NotEmpty().Length(3, 1000);
+        RuleFor(command => command.OwnerType).Must(value => Enum.TryParse<Domain.PropertyOnboardings.PendingOwnerType>(value, true, out _));
+        RuleFor(command => command.AssigneeId).MaximumLength(120).When(command => command.AssigneeId is not null);
+        RuleFor(command => command.RelatedGateType).Must(value => value is null || Enum.TryParse<Domain.PropertyOnboardings.ReadinessGateType>(value, true, out _));
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class UpdatePendingIssueCommandValidator : AbstractValidator<UpdatePendingIssueCommand>
+{
+    public UpdatePendingIssueCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty(); RuleFor(command => command.PendingIssueId).NotEmpty();
+        RuleFor(command => command).Must(command => command.Description is not null || command.OwnerType is not null || command.HasAssigneeId || command.HasTargetAt || command.Status is not null).WithMessage("At least one field must be supplied.");
+        RuleFor(command => command.Description).Length(3, 1000).When(command => command.Description is not null);
+        RuleFor(command => command.OwnerType).Must(value => value is null || Enum.TryParse<Domain.PropertyOnboardings.PendingOwnerType>(value, true, out _));
+        RuleFor(command => command.Status).Must(value => value is null || new[] { "open", "resolved", "cancelled" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.ResolutionNote).NotEmpty().MaximumLength(1000).When(command => string.Equals(command.Status, "resolved", StringComparison.OrdinalIgnoreCase) || string.Equals(command.Status, "cancelled", StringComparison.OrdinalIgnoreCase));
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateCommunicationRecordCommandValidator : AbstractValidator<CreateCommunicationRecordCommand>
+{
+    public CreateCommunicationRecordCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty(); RuleFor(command => command.Channel).Must(value => new[] { "whatsapp", "email" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.ReceivedAt).NotEqual(default(DateTimeOffset));
+        RuleFor(command => command.ProcessedAt).NotEqual(default(DateTimeOffset));
+        RuleFor(command => command.ProcessedAt).GreaterThanOrEqualTo(command => command.ReceivedAt);
+        RuleFor(command => command.ResultSummary).NotEmpty().Length(3, 1000); RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateDuplicateReviewCommandValidator : AbstractValidator<CreateDuplicateReviewCommand>
+{
+    public CreateDuplicateReviewCommandValidator()
+    {
+        RuleFor(command => command.OnboardingId).NotEmpty(); RuleFor(command => command.IdempotencyKey).NotEmpty();
+        RuleFor(command => command.Decision).Must(value => new[] { "notDuplicate", "duplicateOfExistingProperty" }.Contains(value, StringComparer.OrdinalIgnoreCase));
+        RuleFor(command => command.ExistingPropertyId).NotEmpty().When(command => string.Equals(command.Decision, "duplicateOfExistingProperty", StringComparison.OrdinalIgnoreCase));
+        RuleFor(command => command.Justification).NotEmpty().Length(10, 1000); RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}

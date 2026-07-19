@@ -96,8 +96,16 @@ internal sealed class PropertyOnboarding
     internal void ValidateGate(
         ReadinessGateType gateType,
         IReadOnlyList<EvidenceReference> evidence,
+        ContractReference? contractReference,
         string validatedBy,
         DateTimeOffset validatedAt)
+    {
+        OnboardingGuard.EnsureNotClosed(LifecycleStatus);
+        OnboardingGuard.EnsureCanProgress(LifecycleStatus);
+        _readinessGates.FindGate(gateType).Validate(evidence, contractReference, validatedBy, validatedAt);
+        UpdatedAt = validatedAt.ToUniversalTime();
+    }
+    internal void ValidateGate(ReadinessGateType gateType, IReadOnlyList<EvidenceReference> evidence, string validatedBy, DateTimeOffset validatedAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         OnboardingGuard.EnsureCanProgress(LifecycleStatus);
@@ -168,16 +176,18 @@ internal sealed class PropertyOnboarding
         DateTimeOffset receivedAt,
         DateTimeOffset processedAt,
         string resultSummary,
-        TimeSpan sla,
+        bool processedWithinSla,
         string createdBy,
         DateTimeOffset createdAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
-        var record = CommunicationRecord.Create(id, channel, receivedAt, processedAt, resultSummary, sla, createdBy, createdAt);
+        var record = CommunicationRecord.Create(id, channel, receivedAt, processedAt, resultSummary, processedWithinSla, createdBy, createdAt);
         _communicationRecords.Add(record);
         UpdatedAt = createdAt.ToUniversalTime();
         return record;
     }
+    internal CommunicationRecord RecordCommunication(Guid id, CommunicationChannel channel, DateTimeOffset receivedAt, DateTimeOffset processedAt, string resultSummary, TimeSpan sla, string createdBy, DateTimeOffset createdAt)
+        => RecordCommunication(id, channel, receivedAt, processedAt, resultSummary, processedAt <= receivedAt.Add(sla), createdBy, createdAt);
     internal void FlagDuplicateReviewRequired(DateTimeOffset? updatedAt = null)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
