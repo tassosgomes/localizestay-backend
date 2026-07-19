@@ -1,4 +1,5 @@
 using FluentValidation;
+using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Application.Partners;
 using LocalizeStay.Modules.Inventory.Application.Timing;
 using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
@@ -58,6 +59,7 @@ internal sealed class UpdateReadinessGateCommandHandler(InventoryDbContext dbCon
         }
         Audit(onboarding, command.Actor, "GateUpdated", "Readiness gate updated.", now, new Dictionary<string, string> { ["onboardingId"] = onboarding.Id.ToString(), ["gateType"] = command.GateType });
         await SaveAsync(cancellationToken);
+        InventoryTelemetry.Gates.Add(1, new KeyValuePair<string, object?>("gateType", command.GateType), new KeyValuePair<string, object?>("result", command.Status));
         return PropertyOnboardingMapper.ToResponse(onboarding);
     }
 
@@ -124,6 +126,7 @@ internal sealed class CreateCommunicationRecordCommandHandler(InventoryDbContext
         var record = onboarding.RecordCommunication(Guid.NewGuid(), Enum.Parse<CommunicationChannel>(command.Channel, true), command.ReceivedAt, command.ProcessedAt, command.ResultSummary, businessCalendar.IsWithinBusinessHoursSla(command.ReceivedAt, command.ProcessedAt), command.Actor, now);
         Audit(onboarding, command.Actor, "CommunicationRecorded", "Communication result recorded.", now, new Dictionary<string, string> { ["onboardingId"] = onboarding.Id.ToString(), ["communicationChannel"] = command.Channel });
         await SaveAsync(cancellationToken);
+        InventoryTelemetry.CommunicationSla.Add(1, new KeyValuePair<string, object?>("result", record.ProcessedWithinSla ? "within_sla" : "outside_sla"));
         return PropertyOnboardingMapper.ToCommunicationRecordResponse(record);
     }
 }

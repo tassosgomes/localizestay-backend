@@ -1,6 +1,7 @@
 using FluentValidation;
 using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 using LocalizeStay.Modules.Inventory.Infrastructure;
+using LocalizeStay.SharedKernel.Auditing;
 using LocalizeStay.SharedKernel.Cqrs;
 using LocalizeStay.SharedKernel.ErrorHandling;
 using LocalizeStay.SharedKernel.Time;
@@ -25,6 +26,13 @@ internal sealed record PropertyOnboardingResponse(Guid Id, Guid PartnerId, strin
 internal sealed record PropertyOnboardingSummaryResponse(Guid Id, Guid PartnerId, string PartnerDisplayName, string PropertyName, string DestinationId, string LifecycleStatus, string ReadinessStatus, int OpenPendingIssueCount, IReadOnlyList<BlockingReasonResponse> BlockingReasons, DateTimeOffset OpenedAt, DateTimeOffset TargetSubmissionAt, DateTimeOffset UpdatedAt);
 internal sealed record PropertyOnboardingPaginationResponse(int Page, int Size, int Total, int TotalPages);
 internal sealed record PropertyOnboardingListResponse(IReadOnlyList<PropertyOnboardingSummaryResponse> Data, PropertyOnboardingPaginationResponse Pagination);
+internal sealed record HistoryEntryResponse(Guid Id, string Type, DateTimeOffset OccurredAt, string ActorId, string Summary, IReadOnlyDictionary<string, string> Metadata);
+internal sealed record HistoryListResponse(IReadOnlyList<HistoryEntryResponse> Data, PropertyOnboardingPaginationResponse Pagination);
+internal sealed record PercentageMetric(int Numerator, int Denominator, decimal Percentage);
+internal sealed record LifecycleStatusCountResponse(string Status, int Count);
+internal sealed record PropertyOnboardingMetricsResponse(DateTimeOffset From, DateTimeOffset To, int TotalOpened, int PropertiesPreparedForCuration, PercentageMetric SubmittedWithinTenBusinessDays, PercentageMetric CurationReturnRate, PercentageMetric CompleteGatesSubmissionRate, PercentageMetric CommunicationsWithinFourBusinessHours, IReadOnlyList<LifecycleStatusCountResponse> ByLifecycleStatus);
+internal sealed record ListPropertyOnboardingHistoryQuery(Guid OnboardingId, int Page, int Size) : IQuery<HistoryListResponse>;
+internal sealed record GetPropertyOnboardingMetricsQuery(DateTimeOffset From, DateTimeOffset To, string? DestinationId) : IQuery<PropertyOnboardingMetricsResponse>;
 
 internal sealed class GetPropertyOnboardingQueryHandler(InventoryDbContext dbContext) : IQueryHandler<GetPropertyOnboardingQuery, PropertyOnboardingResponse>
 {
@@ -68,6 +76,87 @@ internal sealed class ListPropertyOnboardingsQueryHandler(InventoryDbContext dbC
     }
 }
 
+internal sealed class ListPropertyOnboardingHistoryQueryHandler(InventoryDbContext dbContext, IValidator<ListPropertyOnboardingHistoryQuery> validator) : IQueryHandler<ListPropertyOnboardingHistoryQuery, HistoryListResponse>
+{
+    private static readonly IReadOnlySet<string> _safeMetadataKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "destinationId",
+        "gateType",
+        "communicationChannel",
+        "reasonCode",
+    };
+
+    public async Task<HistoryListResponse> HandleAsync(ListPropertyOnboardingHistoryQuery query, CancellationToken cancellationToken)
+    {
+        await validator.ValidateAndThrowAsync(query, cancellationToken);
+        var exists = await dbContext.PropertyOnboardings.AsNoTracking().AnyAsync(item => item.Id == query.OnboardingId, cancellationToken);
+        if (!exists) throw new NotFoundException("Property onboarding was not found.", "PROPERTY_ONBOARDING_NOT_FOUND");
+        var entries = dbContext.BusinessAuditEntries.AsNoTracking()
+            .Where(entry => entry.AggregateType == "PropertyOnboarding" && entry.AggregateId == query.OnboardingId.ToString())
+            .OrderByDescending(entry => entry.OccurredOnUtc);
+        var total = await entries.CountAsync(cancellationToken);
+        var data = await entries.Skip((query.Page - 1) * query.Size).Take(query.Size)
+            .Select(entry => new HistoryAuditProjection(entry.Id, entry.AuditType, entry.OccurredOnUtc, entry.Actor, entry.Summary, entry.Metadata))
+            .ToListAsync(cancellationToken);
+        var response = data.Select(entry => new HistoryEntryResponse(
+            entry.Id,
+            ToHistoryType(entry.AuditType),
+            entry.OccurredAt,
+            entry.ActorId,
+            entry.Summary,
+            SanitizeMetadata(entry.Metadata))).ToList();
+        return new HistoryListResponse(response, new PropertyOnboardingPaginationResponse(query.Page, query.Size, total, total == 0 ? 0 : (int)Math.Ceiling(total / (double)query.Size)));
+    }
+
+    private static string ToHistoryType(string auditType) => auditType switch
+    {
+        "PropertyOnboardingCreated" => "onboardingOpened",
+        "PropertyOnboardingUpdated" => "propertyUpdated",
+        "GateUpdated" => "gateUpdated",
+        "IssueOpened" => "issueOpened",
+        "IssueUpdated" => "issueUpdated",
+        "CommunicationRecorded" => "communicationRecorded",
+        "DuplicateReviewed" => "duplicateReviewed",
+        "SubmittedToCuration" => "submittedToCuration",
+        "ReturnedByCuration" => "returnedByCuration",
+        "OnboardingClosed" => "onboardingClosed",
+        _ => auditType,
+    };
+
+    private static IReadOnlyDictionary<string, string> SanitizeMetadata(IReadOnlyDictionary<string, string> metadata) =>
+        metadata.Where(pair => _safeMetadataKeys.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+    private sealed record HistoryAuditProjection(Guid Id, string AuditType, DateTimeOffset OccurredAt, string ActorId, string Summary, IReadOnlyDictionary<string, string> Metadata);
+}
+
+internal sealed class GetPropertyOnboardingMetricsQueryHandler(InventoryDbContext dbContext, IValidator<GetPropertyOnboardingMetricsQuery> validator) : IQueryHandler<GetPropertyOnboardingMetricsQuery, PropertyOnboardingMetricsResponse>
+{
+    public async Task<PropertyOnboardingMetricsResponse> HandleAsync(GetPropertyOnboardingMetricsQuery query, CancellationToken cancellationToken)
+    {
+        await validator.ValidateAndThrowAsync(query, cancellationToken);
+        var items = dbContext.PropertyOnboardings.AsNoTracking()
+            .Where(item => item.OpenedAt >= query.From && item.OpenedAt < query.To);
+        if (!string.IsNullOrWhiteSpace(query.DestinationId)) items = items.Where(item => item.Property.DestinationId == query.DestinationId);
+        var totalOpened = await items.CountAsync(cancellationToken);
+        var submitted = items.Where(item => item.SubmittedAt.HasValue || item.CurationReturns.Any());
+        var submittedCount = await submitted.CountAsync(cancellationToken);
+        var submittedWithinTarget = await submitted.CountAsync(item => item.SubmittedAt <= item.TargetSubmissionAt, cancellationToken);
+        var returned = await submitted.SelectMany(item => item.CurationReturns).CountAsync(cancellationToken);
+        var completeGates = await submitted.CountAsync(item => item.ReadinessGates.All(gate => gate.Status == ReadinessGateStatus.Validated), cancellationToken);
+        var communications = items.SelectMany(item => item.CommunicationRecords);
+        var communicationCount = await communications.CountAsync(cancellationToken);
+        var communicationsWithinSla = await communications.CountAsync(item => item.ProcessedWithinSla, cancellationToken);
+        var statusCounts = await items.GroupBy(item => item.LifecycleStatus)
+            .Select(group => new LifecycleStatusCountResponse(PropertyOnboardingMapper.ContractValue(group.Key), group.Count()))
+            .ToListAsync(cancellationToken);
+        return new PropertyOnboardingMetricsResponse(query.From, query.To, totalOpened, submittedCount,
+            Ratio(submittedWithinTarget, submittedCount), Ratio(returned, submittedCount), Ratio(completeGates, submittedCount),
+            Ratio(communicationsWithinSla, communicationCount), statusCounts);
+    }
+
+    private static PercentageMetric Ratio(int numerator, int denominator) => new(numerator, denominator, denominator == 0 ? 0m : decimal.Round(numerator * 100m / denominator, 2));
+}
+
 internal static class PropertyOnboardingMapper
 {
     internal static Property ToProperty(PropertyInput input) => new(input.Name, input.DestinationId, ToAddress(input.Address));
@@ -78,7 +167,7 @@ internal static class PropertyOnboardingMapper
     internal static DuplicateReviewResponse ToDuplicateReviewResponse(DuplicateReview item) => new(item.Id, ContractValue(item.Decision), item.ExistingPropertyId, item.Justification, item.ReviewedAt, item.ReviewedBy);
     internal static PropertyOnboardingSummaryResponse ToSummary(PropertyOnboarding item, string partnerName) => new(item.Id, item.PartnerId, partnerName, item.Property.Name, item.Property.DestinationId, ContractValue(item.LifecycleStatus), ContractValue(item.ReadinessStatus), item.PendingIssues.Count(i => i.Status == PendingIssueStatus.Open), ToBlockingReasons(item), item.OpenedAt, item.TargetSubmissionAt, item.UpdatedAt);
     private static IReadOnlyList<BlockingReasonResponse> ToBlockingReasons(PropertyOnboarding item) => item.GetBlockingReasons().Select(reason => new BlockingReasonResponse(ContractValue(reason.Code), reason.Message, reason.RelatedResourceId)).ToList();
-    private static string ContractValue<TEnum>(TEnum value) where TEnum : struct, Enum => char.ToLowerInvariant(value.ToString()[0]) + value.ToString()[1..];
+    internal static string ContractValue<TEnum>(TEnum value) where TEnum : struct, Enum => char.ToLowerInvariant(value.ToString()[0]) + value.ToString()[1..];
     internal static async Task<IReadOnlyList<DuplicateCandidateResponse>> GetSimilarityCandidatesAsync(InventoryDbContext dbContext, PropertyOnboarding onboarding, CancellationToken cancellationToken)
     {
         var candidates = await dbContext.PropertyOnboardings.AsNoTracking().Where(item => item.Id != onboarding.Id && (item.PropertySimilarityKey == onboarding.PropertySimilarityKey || EF.Functions.ILike(item.Property.Name, onboarding.Property.Name))).ToListAsync(cancellationToken);

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using FluentValidation;
 using LocalizeStay.Contracts.Inventory;
+using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Application.Timing;
 using LocalizeStay.Modules.Inventory.Application.Upstream;
 using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
@@ -19,6 +20,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LocalizeStay.Modules.Inventory.Application.PropertyOnboardings;
 
+// Compatibility instruments retained while dashboards migrate to InventoryTelemetry's richer names.
+internal static class InventoryLifecycleTelemetry
+{
+    internal static readonly ActivitySource ActivitySource = InventoryTelemetry.ActivitySource;
+    private static readonly Meter _meter = new(InventoryTelemetry.SourceName);
+    internal static readonly Counter<long> SubmitSuccess = _meter.CreateCounter<long>("inventory.onboarding.submit.success");
+    internal static readonly Counter<long> SubmitBlocked = _meter.CreateCounter<long>("inventory.onboarding.submit.blocked");
+    internal static readonly Counter<long> OutboxFailure = _meter.CreateCounter<long>("inventory.onboarding.outbox.failure");
+}
+
 internal sealed record AddressInput(string Street, string Number, string? Complement, string District, string City, string State, string PostalCode, string CountryCode);
 internal sealed record PropertyInput(string Name, string DestinationId, AddressInput Address);
 internal sealed record CreatePropertyOnboardingCommand(Guid PartnerId, string PreselectionId, PropertyInput Property, string Actor) : ICommand<PropertyOnboardingResponse>;
@@ -31,15 +42,6 @@ internal sealed record IntegrationEventReferenceResponse(Guid Id, string Type, i
 internal sealed record SubmissionResultResponse(PropertyOnboardingResponse Onboarding, IntegrationEventReferenceResponse IntegrationEvent);
 internal sealed record CurationReturnResponse(Guid Id, string? CurationReference, string ReasonCode, string Reason, IReadOnlyList<CurationReturnIssueInput> Issues, DateTimeOffset ReturnedAt, string ReturnedBy);
 internal sealed record CurationReturnResultResponse(CurationReturnResponse CurationReturn, PropertyOnboardingResponse Onboarding);
-
-internal static class InventoryLifecycleTelemetry
-{
-    internal static readonly ActivitySource ActivitySource = new("LocalizeStay.Inventory.Lifecycle");
-    private static readonly Meter _meter = new("LocalizeStay.Inventory.Lifecycle");
-    internal static readonly Counter<long> SubmitSuccess = _meter.CreateCounter<long>("inventory.onboarding.submit.success");
-    internal static readonly Counter<long> SubmitBlocked = _meter.CreateCounter<long>("inventory.onboarding.submit.blocked");
-    internal static readonly Counter<long> OutboxFailure = _meter.CreateCounter<long>("inventory.onboarding.outbox.failure");
-}
 
 internal sealed class CreatePropertyOnboardingCommandHandler(
     InventoryDbContext dbContext,
@@ -71,6 +73,7 @@ internal sealed class CreatePropertyOnboardingCommandHandler(
         auditWriter.Record(BusinessAuditEntry.Create("PropertyOnboarding", onboarding.Id.ToString(), command.Actor, "PropertyOnboardingCreated", "Property onboarding opened.", now, correlationIdAccessor.CorrelationId, new Dictionary<string, string> { ["onboardingId"] = onboarding.Id.ToString(), ["partnerId"] = partner.Id.ToString(), ["destinationId"] = property.DestinationId }));
         try { await dbContext.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException) { throw new ConflictException("An active onboarding cycle already exists for this property.", "ACTIVE_ONBOARDING_CYCLE_EXISTS"); }
+        InventoryTelemetry.OnboardingsOpened.Add(1, new KeyValuePair<string, object?>("destinationId", property.DestinationId));
         return PropertyOnboardingMapper.ToResponse(onboarding, candidates);
     }
 
@@ -106,7 +109,7 @@ internal sealed class SubmitToCurationCommandHandler(
     public async Task<SubmissionResultResponse> HandleAsync(SubmitToCurationCommand command, CancellationToken cancellationToken)
     {
         await validator.ValidateAndThrowAsync(command, cancellationToken);
-        using var activity = InventoryLifecycleTelemetry.ActivitySource.StartActivity("inventory.onboarding.submit");
+        using var activity = InventoryTelemetry.ActivitySource.StartActivity("inventory.onboarding.submit");
         activity?.SetTag("inventory.onboarding.id", command.OnboardingId);
         var existing = await dbContext.IdempotencyKeys.AsNoTracking().SingleOrDefaultAsync(key => key.Key == command.IdempotencyKey, cancellationToken);
         var fingerprint = Fingerprint(command.DecisionNote);
@@ -117,7 +120,7 @@ internal sealed class SubmitToCurationCommandHandler(
         var onboarding = await LoadAsync(command.OnboardingId, cancellationToken);
         var now = clock.UtcNow;
         try { onboarding.SubmitToCuration(command.IdempotencyKey, command.DecisionNote, now, command.Actor); }
-        catch (BusinessRuleViolationException) { InventoryLifecycleTelemetry.SubmitBlocked.Add(1); throw; }
+        catch (BusinessRuleViolationException) { InventoryTelemetry.Submitted.Add(1, new KeyValuePair<string, object?>("result", "blocked")); throw; }
         var contract = onboarding.ReadinessGates.Single(gate => gate.Type == ReadinessGateType.SignedContract).ContractReference!;
         var integrationEvent = new InventoryPropertyOnboardedV1 { OnboardingId = onboarding.Id, PartnerId = onboarding.PartnerId, DestinationId = onboarding.Property.DestinationId, ContractRepositoryReference = contract.RepositoryReference, SubmittedAt = now, OccurredOnUtc = now, CorrelationId = command.IdempotencyKey.ToString(), CausationId = command.IdempotencyKey.ToString() };
         await dbContext.IdempotencyKeys.AddAsync(IdempotencyKey.Create(onboarding.Id, command.IdempotencyKey, IdempotencyScope.SubmitToCuration, now, fingerprint), cancellationToken);
@@ -130,11 +133,12 @@ internal sealed class SubmitToCurationCommandHandler(
             dbContext.ChangeTracker.Clear();
             var concurrentKey = await dbContext.IdempotencyKeys.AsNoTracking().SingleOrDefaultAsync(key => key.Key == command.IdempotencyKey, cancellationToken);
             if (concurrentKey is not null) return await ReplayAsync(concurrentKey, command, fingerprint, cancellationToken);
-            InventoryLifecycleTelemetry.OutboxFailure.Add(1);
+            InventoryTelemetry.OutboxFailures.Add(1, new KeyValuePair<string, object?>("result", "persistence_failure"));
             throw;
         }
-        catch { InventoryLifecycleTelemetry.OutboxFailure.Add(1); throw; }
-        InventoryLifecycleTelemetry.SubmitSuccess.Add(1);
+        catch { InventoryTelemetry.OutboxFailures.Add(1, new KeyValuePair<string, object?>("result", "persistence_failure")); throw; }
+        InventoryTelemetry.Submitted.Add(1, new KeyValuePair<string, object?>("result", "success"));
+        InventoryTelemetry.SubmissionDuration.Record((now - onboarding.OpenedAt).TotalSeconds);
         return new SubmissionResultResponse(PropertyOnboardingMapper.ToResponse(onboarding), new IntegrationEventReferenceResponse(integrationEvent.EventId, InventoryPropertyOnboardedV1.EventType, integrationEvent.Version, integrationEvent.OccurredOnUtc));
     }
 
@@ -183,6 +187,7 @@ internal sealed class CreateCurationReturnCommandHandler(InventoryDbContext dbCo
             if (concurrentKey is not null) return await ReplayAsync(concurrentKey, command, fingerprint, cancellationToken);
             throw;
         }
+        InventoryTelemetry.Returns.Add(1, new KeyValuePair<string, object?>("result", "recorded"));
         return new CurationReturnResultResponse(ToResponse(returned), PropertyOnboardingMapper.ToResponse(onboarding));
     }
 

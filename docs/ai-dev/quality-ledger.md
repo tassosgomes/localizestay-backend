@@ -4,6 +4,53 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 10.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Teste / Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: As suítes exigidas `PropertyOnboardingMetricsQueryHandlerTests` e `PropertyOnboardingReadEndpointsTests` não existem. Os dois filtros mandatórios terminam sem executar casos, deixando sem evidência intervalos, destino, timezone, denominador zero, paginação, ausência de tracking e PII.
+
+2. Categoria Técnica: Problema de performance
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O handler de métricas usa `Include` de três coleções seguido de `ToListAsync`, carregando agregados completos e calculando em memória, apesar de a tarefa determinar projeção e agregação SQL no banco.
+
+3. Categoria Técnica: Lógica incorreta
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O contrato define `to` como exclusivo, mas o filtro usa `OpenedAt <= query.To`.
+
+4. Categoria Técnica: Problema de segurança
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O histórico expõe `BusinessAuditEntry.Metadata` sem uma projeção segura ou sanitização, contrariando a proibição contratual de vazar tokens, documentos ou conteúdo integral de mensagens.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4
+Categoria Técnica mais frequente: Teste inadequado / performance / lógica / segurança (1 de cada)
+Origem mais frequente: Task mal fragmentada / Lacuna na TechSpec / Limitação do modelo / Contexto insuficiente (1 de cada)
+Indício de fragilidade estrutural? Sim
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Definir queries agregadas por métrica, sem materialização de agregados, e uma allowlist explícita de metadados auditáveis públicos.
+- Template de Task: Exigir confirmação de que os filtros de testes selecionaram casos reais antes do handoff.
+- Skill: `dotnet-testing` pode reforçar que um filtro sem casos é falha de evidência, mesmo que o runner retorne sucesso.
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0
 
 Modelo utilizado:
@@ -390,6 +437,7 @@ Sugestão de melhoria no:
 - TechSpec: N/A
 - Template de Task: N/A
 - Skill: N/A
+
 ---
 
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 8.0
@@ -854,6 +902,72 @@ Total de Problemas: 0
 Categoria Técnica mais frequente: N/A
 Origem mais frequente: N/A
 Indício de fragilidade estrutural? Não — foram verificados o rollback transacional, a concorrência idempotente, o contrato HTTP e o registro do source/meter de lifecycle.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 10.0 (Revalidação pós-correção)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Falha de validação
+   Severidade: Média
+   Fase Detectada: Build
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet format LocalizeStay.sln --verify-no-changes --no-restore` falhou em cinco arquivos, incluindo consultas, comandos, telemetria e imports modificados na task.
+
+2. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O instrumento `outbox.retry.exhausted` é criado no meter `LocalizeStay.Outbox`, mas o pipeline OpenTelemetry registra somente `LocalizeStay.Inventory.Lifecycle`; o alerta obrigatório de quinta tentativa não é exportado.
+
+3. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: As suítes específicas executam, mas não validam com dataset determinístico todos os numeradores, denominadores e percentuais das métricas contratuais.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3
+Categoria Técnica mais frequente: Falha de validação / Erro de integração / Teste inadequado
+Origem mais frequente: Contexto insuficiente / Lacuna na TechSpec / Task mal fragmentada
+Indício de fragilidade estrutural? Sim — um instrumento manual documentado não está incluído no provider OTLP e os cálculos de negócio não têm cobertura completa.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Declarar todos os meters exigidos e seus alertas no pipeline OpenTelemetry.
+- Template de Task: Exigir uma matriz de cenários que cubra cada métrica contratual com numerador, denominador e percentual.
+- Skill: `dotnet-observability` e `dotnet-testing` podem reforçar a validação de exportação de meters e a cobertura integral de métricas de negócio.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 10.0 (Revalidação final)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 3
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — os gates obrigatórios passaram e a integração OTLP, as métricas contratuais e a sanitização do histórico foram revisadas.
 Sugestão de melhoria no:
 - PRD: N/A
 - TechSpec: N/A

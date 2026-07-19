@@ -125,6 +125,26 @@ internal sealed class ListPropertyOnboardingsQueryValidator : AbstractValidator<
     }
 }
 
+internal sealed class ListPropertyOnboardingHistoryQueryValidator : AbstractValidator<ListPropertyOnboardingHistoryQuery>
+{
+    public ListPropertyOnboardingHistoryQueryValidator()
+    {
+        RuleFor(query => query.OnboardingId).NotEmpty();
+        RuleFor(query => query.Page).GreaterThanOrEqualTo(1);
+        RuleFor(query => query.Size).InclusiveBetween(1, 100);
+    }
+}
+
+internal sealed class GetPropertyOnboardingMetricsQueryValidator : AbstractValidator<GetPropertyOnboardingMetricsQuery>
+{
+    public GetPropertyOnboardingMetricsQueryValidator()
+    {
+        RuleFor(query => query.From).NotEmpty();
+        RuleFor(query => query.To).GreaterThan(query => query.From);
+        RuleFor(query => query.DestinationId).MaximumLength(120).When(query => query.DestinationId is not null);
+    }
+}
+
 internal sealed class UpdateReadinessGateCommandValidator : AbstractValidator<UpdateReadinessGateCommand>
 {
     private static readonly string[] _gateTypes = ["legalIdentification", "commercialTerms", "signedContract", "authorizedContact", "propertyBasics", "operationalChannel"];

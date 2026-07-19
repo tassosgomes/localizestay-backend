@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 using LocalizeStay.SharedKernel.Events;
 using LocalizeStay.SharedKernel.Time;
@@ -19,6 +20,8 @@ public sealed class OutboxProcessor<TDbContext>(
     ILogger<OutboxProcessor<TDbContext>> logger) : BackgroundService
     where TDbContext : DbContext, IHasOutbox
 {
+    private static readonly Meter _meter = new("LocalizeStay.Outbox");
+    private static readonly Counter<long> _retryExhausted = _meter.CreateCounter<long>("outbox.retry.exhausted", unit: "{message}");
     private static readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
     private const int MaxRetryAttempts = 5;
     private const int BatchSize = 20;
@@ -96,6 +99,15 @@ public sealed class OutboxProcessor<TDbContext>(
                 message.Id,
                 message.RetryCount,
                 typeof(TDbContext).Name);
+            if (message.RetryCount >= MaxRetryAttempts)
+            {
+                _retryExhausted.Add(1, new KeyValuePair<string, object?>("module", typeof(TDbContext).Name));
+                logger.LogError(
+                    "Outbox retry alert: message {MessageId} reached {RetryCount} attempts for {DbContext}.",
+                    message.Id,
+                    message.RetryCount,
+                    typeof(TDbContext).Name);
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

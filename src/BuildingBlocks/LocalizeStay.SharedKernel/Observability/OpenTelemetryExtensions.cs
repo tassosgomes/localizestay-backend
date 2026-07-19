@@ -53,7 +53,8 @@ public static class OpenTelemetryExtensions
         metrics.SetResourceBuilder(resourceBuilder)
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
-            .AddMeter("LocalizeStay.Inventory.Lifecycle");
+            .AddMeter("LocalizeStay.Inventory.Lifecycle")
+            .AddMeter("LocalizeStay.Outbox");
 
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {
