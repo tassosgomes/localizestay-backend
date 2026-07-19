@@ -4,6 +4,62 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 5.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Violação de padrão arquitetural
+   Severidade: Média
+   Fase Detectada: Build
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet format LocalizeStay.sln --verify-no-changes --no-restore` falha por ordenação de imports (`IMPORTS`) em `BusinessCalendarTests.cs` e `EligibilityValidatorTests.cs`. O critério verificável de qualidade da tarefa não foi satisfeito, embora os 17 testes focados, o build da solução e os 204 testes da solução tenham passado.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Violação de padrão arquitetural
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: Incluir a verificação de formatação antes do handoff para validação.
+- Skill: `dotnet-code-quality` pode reforçar a ordenação de imports como etapa obrigatória de conclusão.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 5.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A implementação registra options com `ValidateOnStart`, mas não há teste que execute a composição/partida com as seções `Inventory:UpstreamEligibility` ou `Inventory:BusinessCalendar` ausentes ou inválidas. Isso deixa sem evidência o critério verificável de fail-fast fora do ambiente local e a subtarefa 5.6.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar um cenário de teste de composição que valide `ValidateOnStart` para opções ausentes e inconsistentes.
+- Template de Task: Incluir uma checklist explícita para testar opções obrigatórias com configuração ausente e inválida.
+- Skill: `dotnet-testing` pode incluir um exemplo de teste de `IOptions` com `ValidateOnStart` em módulos.
+
+---
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 1.0
 
 Modelo utilizado:
@@ -240,5 +296,29 @@ Sugestão de melhoria no:
 - TechSpec: Manter a nota sobre visibilidade `internal` e ajuste manual de migrations para reforçar o padrão nas próximas tarefas.
 - Template de Task: Adicionar check automático/implícito de visibilidade de tipos (`public` vs `internal`) ao critério de qualidade, especialmente para tarefas que criam migrations ou novos tipos de domínio.
 - Skill: O skill `dotnet-architecture` poderia incluir uma regra explícita sobre visibilidade de tipos em módulos (internal por padrão) e o ajuste necessário em migrations EF Core.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 5.0 (Revalidação final)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 3
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — os feedbacks anteriores foram resolvidos; as opções obrigatórias são testadas como ausentes e inconsistentes, e a solução atende à formatação exigida.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
 
 ---

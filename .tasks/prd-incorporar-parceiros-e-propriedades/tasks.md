@@ -41,7 +41,7 @@ Concluir consultas gerenciais, telemetria, validação automática do contrato, 
 - [x] 2.0 Implementar auditoria de negócio compartilhada
 - [x] 3.0 Modelar agregados e invariantes de incorporação
 - [x] 4.0 Persistir o domínio no schema Inventory e gerar migration
-- [ ] 5.0 Implementar elegibilidade upstream e calendário operacional
+- [x] 5.0 Implementar elegibilidade upstream e calendário operacional
 - [ ] 6.0 Implementar cadastro e consulta de parceiros
 - [ ] 7.0 Implementar abertura, edição e consulta de incorporações
 - [ ] 8.0 Implementar gates, pendências, comunicações e revisão de duplicidade

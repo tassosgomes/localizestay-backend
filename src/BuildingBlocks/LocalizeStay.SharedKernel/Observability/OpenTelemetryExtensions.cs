@@ -38,7 +38,8 @@ public static class OpenTelemetryExtensions
     {
         tracing.SetResourceBuilder(resourceBuilder)
             .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation();
+            .AddHttpClientInstrumentation()
+            .AddSource("LocalizeStay.Inventory.Upstream");
 
         if (!string.IsNullOrWhiteSpace(otlpEndpoint))
         {
