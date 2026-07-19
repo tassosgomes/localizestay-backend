@@ -1,15 +1,15 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class ReadinessGate
+internal sealed class ReadinessGate
 {
-    public Guid Id { get; private set; }
-    public ReadinessGateType Type { get; private set; }
-    public ReadinessGateStatus Status { get; private set; }
-    public string? Notes { get; private set; }
-    public IReadOnlyList<EvidenceReference> Evidence => _evidence.AsReadOnly();
-    public DateTimeOffset? ValidatedAt { get; private set; }
-    public string? ValidatedBy { get; private set; }
-    public DateTimeOffset UpdatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal ReadinessGateType Type { get; private set; }
+    internal ReadinessGateStatus Status { get; private set; }
+    internal string? Notes { get; private set; }
+    internal IReadOnlyList<EvidenceReference> Evidence => _evidence.AsReadOnly();
+    internal DateTimeOffset? ValidatedAt { get; private set; }
+    internal string? ValidatedBy { get; private set; }
+    internal DateTimeOffset UpdatedAt { get; private set; }
 
     private readonly List<EvidenceReference> _evidence = [];
 
@@ -88,7 +88,7 @@ public sealed class ReadinessGate
     }
 }
 
-public enum EvidenceKind
+internal enum EvidenceKind
 {
     OfficialDocument,
     Contract,
@@ -97,13 +97,13 @@ public enum EvidenceKind
     Other,
 }
 
-public sealed record EvidenceReference
+internal sealed record EvidenceReference
 {
-    public EvidenceKind Kind { get; }
-    public string Reference { get; }
-    public string Description { get; }
+    internal EvidenceKind Kind { get; }
+    internal string Reference { get; }
+    internal string Description { get; }
 
-    public EvidenceReference(EvidenceKind kind, string reference, string description)
+    internal EvidenceReference(EvidenceKind kind, string reference, string description)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reference);
         ArgumentException.ThrowIfNullOrWhiteSpace(description);

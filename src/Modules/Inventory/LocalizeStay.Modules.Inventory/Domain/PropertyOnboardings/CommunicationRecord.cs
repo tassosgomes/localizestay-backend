@@ -1,15 +1,15 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class CommunicationRecord
+internal sealed class CommunicationRecord
 {
-    public Guid Id { get; private set; }
-    public CommunicationChannel Channel { get; private set; }
-    public DateTimeOffset ReceivedAt { get; private set; }
-    public DateTimeOffset ProcessedAt { get; private set; }
-    public string ResultSummary { get; private set; } = string.Empty;
-    public bool ProcessedWithinSla { get; private set; }
-    public string CreatedBy { get; private set; } = string.Empty;
-    public DateTimeOffset CreatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal CommunicationChannel Channel { get; private set; }
+    internal DateTimeOffset ReceivedAt { get; private set; }
+    internal DateTimeOffset ProcessedAt { get; private set; }
+    internal string ResultSummary { get; private set; } = string.Empty;
+    internal bool ProcessedWithinSla { get; private set; }
+    internal string CreatedBy { get; private set; } = string.Empty;
+    internal DateTimeOffset CreatedAt { get; private set; }
 
     private CommunicationRecord()
     {

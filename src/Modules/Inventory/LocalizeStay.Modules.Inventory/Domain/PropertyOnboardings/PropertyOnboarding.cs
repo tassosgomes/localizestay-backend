@@ -3,28 +3,35 @@ using LocalizeStay.SharedKernel.ErrorHandling;
 
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class PropertyOnboarding
+internal sealed class PropertyOnboarding
 {
-    public Guid Id { get; private set; }
-    public Guid PartnerId { get; private set; }
-    public string PreselectionId { get; private set; } = string.Empty;
-    public Property Property { get; private set; } = null!;
-    public OnboardingLifecycleStatus LifecycleStatus { get; private set; }
-    public ReadinessStatus ReadinessStatus => IsReady ? ReadinessStatus.Ready : ReadinessStatus.Blocked;
-    public IReadOnlyList<ReadinessGate> ReadinessGates => _readinessGates.AsReadOnly();
-    public IReadOnlyList<PendingIssue> PendingIssues => _pendingIssues.AsReadOnly();
-    public IReadOnlyList<CommunicationRecord> CommunicationRecords => _communicationRecords.AsReadOnly();
-    public IReadOnlyList<DuplicateReview> DuplicateReviews => _duplicateReviews.AsReadOnly();
-    public IReadOnlyList<CurationReturn> CurationReturns => _curationReturns.AsReadOnly();
-    public bool DuplicateReviewRequiresDecision { get; private set; }
-    public DateTimeOffset OpenedAt { get; private set; }
-    public DateTimeOffset TargetSubmissionAt { get; private set; }
-    public DateTimeOffset? SubmittedAt { get; private set; }
-    public DateTimeOffset? ClosedAt { get; private set; }
-    public CloseReasonCode? ReasonCode { get; private set; }
-    public string? CloseReason { get; private set; }
-    public DateTimeOffset CreatedAt { get; private set; }
-    public DateTimeOffset UpdatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal Guid PartnerId { get; private set; }
+    internal string PreselectionId { get; private set; } = string.Empty;
+    internal Property Property { get; private set; } = null!;
+    internal OnboardingLifecycleStatus LifecycleStatus { get; private set; }
+    internal ReadinessStatus ReadinessStatus => IsReady ? ReadinessStatus.Ready : ReadinessStatus.Blocked;
+    internal IReadOnlyList<ReadinessGate> ReadinessGates => _readinessGates.AsReadOnly();
+    internal IReadOnlyList<PendingIssue> PendingIssues => _pendingIssues.AsReadOnly();
+    internal IReadOnlyList<CommunicationRecord> CommunicationRecords => _communicationRecords.AsReadOnly();
+    internal IReadOnlyList<DuplicateReview> DuplicateReviews => _duplicateReviews.AsReadOnly();
+    internal IReadOnlyList<CurationReturn> CurationReturns => _curationReturns.AsReadOnly();
+    internal bool DuplicateReviewRequiresDecision { get; private set; }
+    internal DateTimeOffset OpenedAt { get; private set; }
+    internal DateTimeOffset TargetSubmissionAt { get; private set; }
+    internal DateTimeOffset? SubmittedAt { get; private set; }
+    internal DateTimeOffset? ClosedAt { get; private set; }
+    internal CloseReasonCode? ReasonCode { get; private set; }
+    internal string? CloseReason { get; private set; }
+    internal DateTimeOffset CreatedAt { get; private set; }
+    internal DateTimeOffset UpdatedAt { get; private set; }
+
+    /// <summary>
+    /// Normalized property similarity key persisted so the database can enforce a partial unique
+    /// index preventing more than one active onboarding cycle for the same property.
+    /// </summary>
+    internal string PropertySimilarityKey { get; private set; } = string.Empty;
+
     private readonly List<ReadinessGate> _readinessGates = [];
     private readonly List<PendingIssue> _pendingIssues = [];
     private readonly List<CommunicationRecord> _communicationRecords = [];
@@ -34,12 +41,12 @@ public sealed class PropertyOnboarding
     private PropertyOnboarding()
     {
     }
-    public bool IsReady =>
+    internal bool IsReady =>
         _readinessGates.Count == 6
         && _readinessGates.All(gate => gate.Status == ReadinessGateStatus.Validated)
         && !_pendingIssues.Any(issue => issue.Status == PendingIssueStatus.Open)
         && !DuplicateReviewRequiresDecision;
-    public static PropertyOnboarding Create(
+    internal static PropertyOnboarding Create(
         Guid id,
         Guid partnerId,
         string preselectionId,
@@ -60,6 +67,7 @@ public sealed class PropertyOnboarding
             PartnerId = partnerId,
             PreselectionId = preselectionId.Trim(),
             Property = property,
+            PropertySimilarityKey = property.SimilarityKey,
             LifecycleStatus = OnboardingLifecycleStatus.InProgress,
             DuplicateReviewRequiresDecision = false,
             OpenedAt = openedUtc,
@@ -72,7 +80,7 @@ public sealed class PropertyOnboarding
                 .Select(type => ReadinessGate.Create(type, openedUtc)));
         return onboarding;
     }
-    public void UpdateProperty(string name, Address address, DateTimeOffset updatedAt)
+    internal void UpdateProperty(string name, Address address, DateTimeOffset updatedAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -82,9 +90,10 @@ public sealed class PropertyOnboarding
             throw new ArgumentException("Name must be between 2 and 180 characters.", nameof(name));
         }
         Property = new Property(name, Property.DestinationId, address);
+        PropertySimilarityKey = Property.SimilarityKey;
         UpdatedAt = updatedAt.ToUniversalTime();
     }
-    public void ValidateGate(
+    internal void ValidateGate(
         ReadinessGateType gateType,
         IReadOnlyList<EvidenceReference> evidence,
         string validatedBy,
@@ -95,21 +104,21 @@ public sealed class PropertyOnboarding
         _readinessGates.FindGate(gateType).Validate(evidence, validatedBy, validatedAt);
         UpdatedAt = validatedAt.ToUniversalTime();
     }
-    public void RejectGate(ReadinessGateType gateType, string notes, DateTimeOffset updatedAt)
+    internal void RejectGate(ReadinessGateType gateType, string notes, DateTimeOffset updatedAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         OnboardingGuard.EnsureCanProgress(LifecycleStatus);
         _readinessGates.FindGate(gateType).Reject(notes, updatedAt);
         UpdatedAt = updatedAt.ToUniversalTime();
     }
-    public void ResetGateToPending(ReadinessGateType gateType, DateTimeOffset updatedAt)
+    internal void ResetGateToPending(ReadinessGateType gateType, DateTimeOffset updatedAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         OnboardingGuard.EnsureCanProgress(LifecycleStatus);
         _readinessGates.FindGate(gateType).ResetToPending(updatedAt);
         UpdatedAt = updatedAt.ToUniversalTime();
     }
-    public PendingIssue AddPendingIssue(
+    internal PendingIssue AddPendingIssue(
         Guid id,
         string description,
         PendingOwnerType ownerType,
@@ -126,7 +135,7 @@ public sealed class PropertyOnboarding
         UpdatedAt = openedAt.ToUniversalTime();
         return issue;
     }
-    public void UpdatePendingIssue(
+    internal void UpdatePendingIssue(
         Guid issueId,
         string description,
         PendingOwnerType ownerType,
@@ -139,21 +148,21 @@ public sealed class PropertyOnboarding
         _pendingIssues.FindPendingIssue(issueId).UpdateDetails(description, ownerType, assigneeId, targetAt, updatedAt);
         UpdatedAt = updatedAt.ToUniversalTime();
     }
-    public void ResolvePendingIssue(Guid issueId, string resolutionNote, DateTimeOffset resolvedAt)
+    internal void ResolvePendingIssue(Guid issueId, string resolutionNote, DateTimeOffset resolvedAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         OnboardingGuard.EnsureCanProgress(LifecycleStatus);
         _pendingIssues.FindPendingIssue(issueId).Resolve(resolutionNote, resolvedAt);
         UpdatedAt = resolvedAt.ToUniversalTime();
     }
-    public void CancelPendingIssue(Guid issueId, string resolutionNote, DateTimeOffset cancelledAt)
+    internal void CancelPendingIssue(Guid issueId, string resolutionNote, DateTimeOffset cancelledAt)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         OnboardingGuard.EnsureCanProgress(LifecycleStatus);
         _pendingIssues.FindPendingIssue(issueId).Cancel(resolutionNote, cancelledAt);
         UpdatedAt = cancelledAt.ToUniversalTime();
     }
-    public CommunicationRecord RecordCommunication(
+    internal CommunicationRecord RecordCommunication(
         Guid id,
         CommunicationChannel channel,
         DateTimeOffset receivedAt,
@@ -169,14 +178,14 @@ public sealed class PropertyOnboarding
         UpdatedAt = createdAt.ToUniversalTime();
         return record;
     }
-    public void FlagDuplicateReviewRequired(DateTimeOffset? updatedAt = null)
+    internal void FlagDuplicateReviewRequired(DateTimeOffset? updatedAt = null)
     {
         OnboardingGuard.EnsureNotClosed(LifecycleStatus);
         OnboardingGuard.EnsureCanProgress(LifecycleStatus);
         DuplicateReviewRequiresDecision = true;
         UpdatedAt = (updatedAt ?? DateTimeOffset.UtcNow).ToUniversalTime();
     }
-    public DuplicateReview SubmitDuplicateReview(
+    internal DuplicateReview SubmitDuplicateReview(
         Guid reviewId,
         DuplicateReviewDecision decision,
         Guid? existingPropertyId,
@@ -209,7 +218,7 @@ public sealed class PropertyOnboarding
         UpdatedAt = reviewedAt.ToUniversalTime();
         return review;
     }
-    public void SubmitToCuration(
+    internal void SubmitToCuration(
         Guid idempotencyKey,
         string decisionNote,
         DateTimeOffset submittedAt,
@@ -230,7 +239,7 @@ public sealed class PropertyOnboarding
         LifecycleStatus = OnboardingLifecycleStatus.SubmittedToCuration;
         UpdatedAt = submittedAt.ToUniversalTime();
     }
-    public CurationReturn RecordCurationReturn(
+    internal CurationReturn RecordCurationReturn(
         Guid returnId,
         string? curationReference,
         CurationReturnReasonCode reasonCode,
@@ -254,7 +263,7 @@ public sealed class PropertyOnboarding
         UpdatedAt = returnedAt.ToUniversalTime();
         return curationReturn;
     }
-    public void Close(CloseReasonCode reasonCode, string reason, DateTimeOffset closedAt, string closedBy)
+    internal void Close(CloseReasonCode reasonCode, string reason, DateTimeOffset closedAt, string closedBy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         ArgumentException.ThrowIfNullOrWhiteSpace(closedBy);
@@ -274,6 +283,6 @@ public sealed class PropertyOnboarding
         ClosedAt = closedAt.ToUniversalTime();
         UpdatedAt = closedAt.ToUniversalTime();
     }
-    public IReadOnlyList<BlockingReason> GetBlockingReasons() =>
+    internal IReadOnlyList<BlockingReason> GetBlockingReasons() =>
         BlockingReasonBuilder.Build(LifecycleStatus, _readinessGates, _pendingIssues, DuplicateReviewRequiresDecision);
 }

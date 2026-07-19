@@ -2,17 +2,25 @@ using System.Text.RegularExpressions;
 
 namespace LocalizeStay.Modules.Inventory.Domain.Partners;
 
-public sealed partial record LegalIdentifier
+internal sealed partial record LegalIdentifier
 {
     private const int MaxValueLength = 40;
     private const int IsoCountryCodeLength = 2;
 
-    public LegalIdentifierType Type { get; }
-    public string CountryCode { get; }
-    public string Value { get; }
-    public string NormalizedValue { get; }
+    internal LegalIdentifierType Type { get; }
+    internal string CountryCode { get; }
+    internal string Value { get; }
+    internal string NormalizedValue { get; }
 
-    public LegalIdentifier(LegalIdentifierType type, string countryCode, string value)
+    private LegalIdentifier()
+    {
+        Type = default;
+        CountryCode = string.Empty;
+        Value = string.Empty;
+        NormalizedValue = string.Empty;
+    }
+
+    internal LegalIdentifier(LegalIdentifierType type, string countryCode, string value)
     {
         if (type != LegalIdentifierType.Cnpj
             && type != LegalIdentifierType.Cpf
@@ -41,7 +49,7 @@ public sealed partial record LegalIdentifier
         NormalizedValue = Normalize(type, trimmedValue);
     }
 
-    public string MaskedValue => Mask(Value);
+    internal string MaskedValue => Mask(Value);
 
     private static string Normalize(LegalIdentifierType type, string value)
     {

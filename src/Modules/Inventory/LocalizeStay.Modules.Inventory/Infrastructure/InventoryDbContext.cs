@@ -1,3 +1,5 @@
+using LocalizeStay.Modules.Inventory.Domain.Partners;
+using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 using LocalizeStay.SharedKernel.Auditing;
 using LocalizeStay.SharedKernel.Outbox;
 using Microsoft.EntityFrameworkCore;
@@ -15,11 +17,14 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
+    public DbSet<Partner> Partners => Set<Partner>();
+
+    public DbSet<PropertyOnboarding> PropertyOnboardings => Set<PropertyOnboarding>();
+
+    public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
+
     /// <summary>
-    /// Append-only business audit rows owned by this schema (ADR-003). The full EF mapping
-    /// (<c>ToJson</c> for <see cref="BusinessAuditEntry.Metadata"/>, table name, indexes, JSON column)
-    /// lands in task 4.0 via <c>BusinessAuditEntryConfiguration</c>; here we only register the entity
-    /// and neutralize the unmappable <c>Metadata</c> dictionary so the model builds today.
+    /// Append-only business audit rows owned by this schema (ADR-003).
     /// </summary>
     public DbSet<BusinessAuditEntry> BusinessAuditEntries => Set<BusinessAuditEntry>();
 
@@ -36,13 +41,6 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
             outbox.Property(message => message.Content).IsRequired();
             outbox.Property(message => message.CorrelationId).HasMaxLength(100).IsRequired();
             outbox.HasIndex(message => new { message.ProcessedOnUtc, message.OccurredOnUtc });
-        });
-
-        modelBuilder.Entity<BusinessAuditEntry>(audit =>
-        {
-            audit.HasKey(entry => entry.Id);
-            // Metadata mapping (JSON column) is added in task 4.0 by BusinessAuditEntryConfiguration.
-            audit.Ignore(entry => entry.Metadata);
         });
 
         base.OnModelCreating(modelBuilder);

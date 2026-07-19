@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum DuplicateReviewDecision
+internal enum DuplicateReviewDecision
 {
     NotDuplicate,
     DuplicateOfExistingProperty,

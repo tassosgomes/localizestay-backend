@@ -4,7 +4,7 @@ namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
 internal static class OnboardingGuard
 {
-    public static void EnsureNotClosed(OnboardingLifecycleStatus status)
+    internal static void EnsureNotClosed(OnboardingLifecycleStatus status)
     {
         if (status == OnboardingLifecycleStatus.Closed)
         {
@@ -14,7 +14,7 @@ internal static class OnboardingGuard
         }
     }
 
-    public static void EnsureCanProgress(OnboardingLifecycleStatus status)
+    internal static void EnsureCanProgress(OnboardingLifecycleStatus status)
     {
         if (status != OnboardingLifecycleStatus.InProgress
             && status != OnboardingLifecycleStatus.ReturnedByCuration)
@@ -25,7 +25,7 @@ internal static class OnboardingGuard
         }
     }
 
-    public static void EnsureSubmittedToCuration(OnboardingLifecycleStatus status)
+    internal static void EnsureSubmittedToCuration(OnboardingLifecycleStatus status)
     {
         if (status != OnboardingLifecycleStatus.SubmittedToCuration)
         {

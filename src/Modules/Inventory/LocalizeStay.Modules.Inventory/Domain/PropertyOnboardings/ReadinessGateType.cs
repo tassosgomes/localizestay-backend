@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum ReadinessGateType
+internal enum ReadinessGateType
 {
     LegalIdentification,
     CommercialTerms,

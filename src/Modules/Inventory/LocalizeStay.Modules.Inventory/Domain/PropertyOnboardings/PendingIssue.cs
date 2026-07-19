@@ -1,19 +1,19 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class PendingIssue
+internal sealed class PendingIssue
 {
-    public Guid Id { get; private set; }
-    public string Description { get; private set; } = string.Empty;
-    public PendingOwnerType OwnerType { get; private set; }
-    public string? AssigneeId { get; private set; }
-    public PendingIssueStatus Status { get; private set; }
-    public ReadinessGateType? RelatedGateType { get; private set; }
-    public DateTimeOffset? TargetAt { get; private set; }
-    public DateTimeOffset OpenedAt { get; private set; }
-    public string OpenedBy { get; private set; } = string.Empty;
-    public DateTimeOffset? ResolvedAt { get; private set; }
-    public string? ResolutionNote { get; private set; }
-    public DateTimeOffset UpdatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal string Description { get; private set; } = string.Empty;
+    internal PendingOwnerType OwnerType { get; private set; }
+    internal string? AssigneeId { get; private set; }
+    internal PendingIssueStatus Status { get; private set; }
+    internal ReadinessGateType? RelatedGateType { get; private set; }
+    internal DateTimeOffset? TargetAt { get; private set; }
+    internal DateTimeOffset OpenedAt { get; private set; }
+    internal string OpenedBy { get; private set; } = string.Empty;
+    internal DateTimeOffset? ResolvedAt { get; private set; }
+    internal string? ResolutionNote { get; private set; }
+    internal DateTimeOffset UpdatedAt { get; private set; }
 
     private PendingIssue()
     {

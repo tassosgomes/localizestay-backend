@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum BlockingReasonCode
+internal enum BlockingReasonCode
 {
     GateNotValidated,
     PendingIssueOpen,

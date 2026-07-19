@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum PendingOwnerType
+internal enum PendingOwnerType
 {
     Staff,
     Partner,

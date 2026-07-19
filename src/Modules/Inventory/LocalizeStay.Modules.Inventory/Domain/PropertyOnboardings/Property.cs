@@ -1,12 +1,27 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed record Property
+internal sealed record Property
 {
-    public string Name { get; }
-    public string DestinationId { get; }
-    public Address Address { get; }
+    internal string Name { get; }
+    internal string DestinationId { get; }
+    internal Address Address { get; }
 
-    public Property(string name, string destinationId, Address address)
+    /// <summary>
+    /// Normalized key used to detect concurrent active onboarding cycles for the same physical
+    /// property: <c>destinationId:countryCode:postalCode:normalized(street + ' ' + number)</c>.
+    /// </summary>
+    internal string SimilarityKey =>
+        FormattableString.Invariant(
+            $"{DestinationId}:{Address.CountryCode}:{Address.PostalCode}:{(Address.Street + ' ' + Address.Number).ToLowerInvariant().Replace(" ", "")}");
+
+    private Property()
+    {
+        Name = string.Empty;
+        DestinationId = string.Empty;
+        Address = null!;
+    }
+
+    internal Property(string name, string destinationId, Address address)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationId);
@@ -28,18 +43,29 @@ public sealed record Property
     }
 }
 
-public sealed record Address
+internal sealed record Address
 {
-    public string Street { get; }
-    public string Number { get; }
-    public string? Complement { get; }
-    public string District { get; }
-    public string City { get; }
-    public string State { get; }
-    public string PostalCode { get; }
-    public string CountryCode { get; }
+    internal string Street { get; }
+    internal string Number { get; }
+    internal string? Complement { get; }
+    internal string District { get; }
+    internal string City { get; }
+    internal string State { get; }
+    internal string PostalCode { get; }
+    internal string CountryCode { get; }
 
-    public Address(
+    private Address()
+    {
+        Street = string.Empty;
+        Number = string.Empty;
+        District = string.Empty;
+        City = string.Empty;
+        State = string.Empty;
+        PostalCode = string.Empty;
+        CountryCode = string.Empty;
+    }
+
+    internal Address(
         string street,
         string number,
         string? complement,

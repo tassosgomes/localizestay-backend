@@ -4,7 +4,7 @@ namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
 internal static class BlockingReasonBuilder
 {
-    public static IReadOnlyList<BlockingReason> Build(
+    internal static IReadOnlyList<BlockingReason> Build(
         OnboardingLifecycleStatus lifecycleStatus,
         IEnumerable<ReadinessGate> gates,
         IEnumerable<PendingIssue> issues,

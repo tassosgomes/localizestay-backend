@@ -1,8 +1,8 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class IdempotentReplayException : Exception
+internal sealed class IdempotentReplayException : Exception
 {
-    public IdempotentReplayException(string message) : base(message)
+    internal IdempotentReplayException(string message) : base(message)
     {
     }
 }

@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum ReadinessStatus
+internal enum ReadinessStatus
 {
     Blocked,
     Ready,

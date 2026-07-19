@@ -1,15 +1,15 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class CurationReturn
+internal sealed class CurationReturn
 {
-    public Guid Id { get; private set; }
-    public string? CurationReference { get; private set; }
-    public CurationReturnReasonCode ReasonCode { get; private set; }
-    public string Reason { get; private set; } = string.Empty;
-    public IReadOnlyList<CurationReturnIssue> Issues => _issues.AsReadOnly();
-    public DateTimeOffset ReturnedAt { get; private set; }
-    public string ReturnedBy { get; private set; } = string.Empty;
-    public DateTimeOffset CreatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal string? CurationReference { get; private set; }
+    internal CurationReturnReasonCode ReasonCode { get; private set; }
+    internal string Reason { get; private set; } = string.Empty;
+    internal IReadOnlyList<CurationReturnIssue> Issues => _issues.AsReadOnly();
+    internal DateTimeOffset ReturnedAt { get; private set; }
+    internal string ReturnedBy { get; private set; } = string.Empty;
+    internal DateTimeOffset CreatedAt { get; private set; }
 
     private readonly List<CurationReturnIssue> _issues = [];
 
@@ -62,13 +62,13 @@ public sealed class CurationReturn
     }
 }
 
-public sealed record CurationReturnIssue
+internal sealed record CurationReturnIssue
 {
-    public string Description { get; }
-    public PendingOwnerType OwnerType { get; }
-    public ReadinessGateType? RelatedGateType { get; }
+    internal string Description { get; }
+    internal PendingOwnerType OwnerType { get; }
+    internal ReadinessGateType? RelatedGateType { get; }
 
-    public CurationReturnIssue(string description, PendingOwnerType ownerType, ReadinessGateType? relatedGateType)
+    internal CurationReturnIssue(string description, PendingOwnerType ownerType, ReadinessGateType? relatedGateType)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
 

@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum CloseReasonCode
+internal enum CloseReasonCode
 {
     PartnerWithdrawal,
     EligibilityFailure,

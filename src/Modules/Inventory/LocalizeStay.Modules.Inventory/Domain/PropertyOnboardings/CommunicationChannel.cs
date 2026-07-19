@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum CommunicationChannel
+internal enum CommunicationChannel
 {
     Whatsapp,
     Email,

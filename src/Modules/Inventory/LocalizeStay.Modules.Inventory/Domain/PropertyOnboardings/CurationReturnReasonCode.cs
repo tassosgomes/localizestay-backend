@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum CurationReturnReasonCode
+internal enum CurationReturnReasonCode
 {
     MissingData,
     InconsistentData,

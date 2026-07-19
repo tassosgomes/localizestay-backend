@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum OnboardingLifecycleStatus
+internal enum OnboardingLifecycleStatus
 {
     InProgress,
     SubmittedToCuration,

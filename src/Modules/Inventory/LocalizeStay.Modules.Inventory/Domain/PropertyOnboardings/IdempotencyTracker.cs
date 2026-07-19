@@ -6,7 +6,7 @@ internal sealed class IdempotencyTracker
 {
     private readonly Dictionary<Guid, IdempotencyScope> _keys = new();
 
-    public void AssertAndRecord(Guid key, IdempotencyScope scope)
+    internal void AssertAndRecord(Guid key, IdempotencyScope scope)
     {
         if (_keys.TryGetValue(key, out var existingScope))
         {

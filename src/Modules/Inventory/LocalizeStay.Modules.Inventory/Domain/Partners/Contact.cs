@@ -1,12 +1,19 @@
 namespace LocalizeStay.Modules.Inventory.Domain.Partners;
 
-public sealed record Contact
+internal sealed record Contact
 {
-    public string Name { get; }
-    public string Email { get; }
-    public string Phone { get; }
+    internal string Name { get; }
+    internal string Email { get; }
+    internal string Phone { get; }
 
-    public Contact(string name, string email, string phone)
+    private Contact()
+    {
+        Name = string.Empty;
+        Email = string.Empty;
+        Phone = string.Empty;
+    }
+
+    internal Contact(string name, string email, string phone)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(email);

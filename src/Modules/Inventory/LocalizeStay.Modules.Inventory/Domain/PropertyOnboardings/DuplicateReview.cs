@@ -1,14 +1,14 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public sealed class DuplicateReview
+internal sealed class DuplicateReview
 {
-    public Guid Id { get; private set; }
-    public DuplicateReviewDecision Decision { get; private set; }
-    public Guid? ExistingPropertyId { get; private set; }
-    public string Justification { get; private set; } = string.Empty;
-    public DateTimeOffset ReviewedAt { get; private set; }
-    public string ReviewedBy { get; private set; } = string.Empty;
-    public DateTimeOffset CreatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal DuplicateReviewDecision Decision { get; private set; }
+    internal Guid? ExistingPropertyId { get; private set; }
+    internal string Justification { get; private set; } = string.Empty;
+    internal DateTimeOffset ReviewedAt { get; private set; }
+    internal string ReviewedBy { get; private set; } = string.Empty;
+    internal DateTimeOffset CreatedAt { get; private set; }
 
     private DuplicateReview()
     {

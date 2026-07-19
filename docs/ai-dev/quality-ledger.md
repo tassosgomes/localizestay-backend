@@ -35,7 +35,7 @@ Modelo utilizado:
 ### Resumo da Tarefa
 
 Total de Problemas: 3
-Categoria Técnica mais frequente: Violação de padrão / produção-readiness / overengineering (1 de cada)
+Categoria Técnica mais frequente: Violação de padrão arquitetural / produção-readiness / overengineering (1 de cada)
 Origem mais frequente: Skill / Task / Modelo (1 de cada)
 Indício de fragilidade estrutural? Não — todos os arquivos entregues pela Task 1.0 estão corretamente formatados e testados; o débito de formatação é pré-existente.
 Sugestão de melhoria no:
@@ -182,3 +182,63 @@ Sugestão de melhoria no:
 - Template de Task: Adicionar check automático/implícito de limite de tamanho de classe (≤ 300 linhas) ao critério de qualidade.
 - Skill: `dotnet-code-quality` poderia incluir exemplo concreto de como quebrar uma classe de agregado grande em value objects/serviços de domínio sem violar a regra de "domínio puro".
 
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 4.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Violação de padrão arquitetural
+   Severidade: Alta
+   Fase Detectada: Teste (validação automatizada)
+   Origem Provável: Task / Skill
+   Necessitou Reimplementação Significativa? Não (mecânica — alteração de visibilidade `public` → `internal`)
+   Descrição: `LocalizeStay.ArchitectureTests.EncapsulationTests.Domain_application_and_infrastructure_types_should_not_be_public` falha para `Inventory.Domain` e `Inventory.Infrastructure`. Todos os tipos do domínio F01 (`Partner`, `PropertyOnboarding`, `Contact`, `LegalIdentifier`, `Address`, `Property`, `IdempotencyKey`, enums, etc.) estão `public`, e a migration `AddPortfolioOnboarding` gerada pelo EF Core também é `public partial class`. A baseline de arquitetura do repositório exige que apenas `*.Contracts` seja público; `Domain`, `Application` e `Infrastructure` devem ser `internal`. O `csproj` do módulo já declara `InternalsVisibleTo` para os projetos de teste, confirmando a intenção.
+
+2. Categoria Técnica: Violação de padrão arquitetural
+   Severidade: Média
+   Fase Detectada: Teste (validação automatizada)
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não (mecânica)
+   Descrição: A migration `20260719142051_AddPortfolioOnboarding.cs` foi gerada como `public partial class AddPortfolioOnboarding`, introduzindo um tipo público em `Inventory.Infrastructure`. A migration precisa ser ajustada para `internal partial class`, assim como o arquivo `.Designer.cs` e `InventoryDbContextModelSnapshot.cs`.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2
+Categoria Técnica mais frequente: Violação de padrão arquitetural
+Origem mais frequente: Task
+Indício de fragilidade estrutural? Sim — o módulo Inventory possui tipos de implementação expostos publicamente, quebrando a barreira de `Contracts` e o ADR de um schema/módulo dono. A correção é mecânica, mas o padrão precisa ser reforçado para as próximas tarefas.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Incluir nota explícita na seção de arquitetura: "Tipos de `Domain`, `Application` e `Infrastructure` devem ser `internal`; apenas `*.Contracts` é público. Migrations geradas pelo EF Core devem ser ajustadas manualmente para `internal partial class`."
+- Template de Task: Adicionar check automático/implícito de visibilidade de tipos (`public` vs `internal`) ao critério de qualidade, especialmente para tarefas que criam migrations ou novos tipos de domínio.
+- Skill: O skill `dotnet-architecture` poderia incluir uma regra explícita sobre visibilidade de tipos em módulos (internal por padrão) e o ajuste necessário em migrations EF Core.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 4.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — todas as correções solicitadas na iteração anterior foram aplicadas: todos os tipos de `Inventory.Domain` são `internal`, as migrations e `ModelSnapshot` são `internal partial class`, `ReadinessGateTests.cs` foi ajustado para evitar CS0051, e as shadow properties de `CurationReturnConfiguration` e `ReadinessGateConfiguration` foram corrigidas. Build, 187 testes da solução, 8 testes de `InventoryPersistenceTests`, 18 testes de integração, script idempotente de migration e `dotnet format --verify-no-changes` passaram com sucesso.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Manter a nota sobre visibilidade `internal` e ajuste manual de migrations para reforçar o padrão nas próximas tarefas.
+- Template de Task: Adicionar check automático/implícito de visibilidade de tipos (`public` vs `internal`) ao critério de qualidade, especialmente para tarefas que criam migrations ou novos tipos de domínio.
+- Skill: O skill `dotnet-architecture` poderia incluir uma regra explícita sobre visibilidade de tipos em módulos (internal por padrão) e o ajuste necessário em migrations EF Core.
+
+---

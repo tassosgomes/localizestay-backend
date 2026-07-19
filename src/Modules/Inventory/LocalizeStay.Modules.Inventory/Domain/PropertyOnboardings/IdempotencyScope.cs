@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum IdempotencyScope
+internal enum IdempotencyScope
 {
     SubmitToCuration,
     CurationReturn,

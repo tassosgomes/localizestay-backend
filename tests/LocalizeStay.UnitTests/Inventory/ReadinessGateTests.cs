@@ -46,11 +46,13 @@ public class ReadinessGateTests
     }
 
     [Theory]
-    [InlineData(ReadinessGateType.SignedContract, EvidenceKind.Contract)]
-    [InlineData(ReadinessGateType.AuthorizedContact, EvidenceKind.FormalAuthorization)]
-    [InlineData(ReadinessGateType.OperationalChannel, EvidenceKind.Communication)]
-    public void Validate_GateWithRequiredEvidenceKind_ShouldRequireSpecificEvidence(ReadinessGateType type, EvidenceKind requiredKind)
+    [InlineData(nameof(ReadinessGateType.SignedContract), nameof(EvidenceKind.Contract))]
+    [InlineData(nameof(ReadinessGateType.AuthorizedContact), nameof(EvidenceKind.FormalAuthorization))]
+    [InlineData(nameof(ReadinessGateType.OperationalChannel), nameof(EvidenceKind.Communication))]
+    public void Validate_GateWithRequiredEvidenceKind_ShouldRequireSpecificEvidence(string gateTypeName, string evidenceKindName)
     {
+        var type = Enum.Parse<ReadinessGateType>(gateTypeName);
+        var requiredKind = Enum.Parse<EvidenceKind>(evidenceKindName);
         var now = DateTimeOffset.UtcNow;
         var gate = ReadinessGate.Create(type, now);
         var wrongEvidence = new[] { new EvidenceReference(EvidenceKind.Other, "other-ref", "Other evidence") };

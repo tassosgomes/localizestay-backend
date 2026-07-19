@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.Partners;
 
-public enum LegalIdentifierType
+internal enum LegalIdentifierType
 {
     Cnpj,
     Cpf,

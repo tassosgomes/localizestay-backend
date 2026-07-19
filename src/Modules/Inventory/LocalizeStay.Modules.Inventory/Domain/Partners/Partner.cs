@@ -2,22 +2,22 @@ using LocalizeStay.SharedKernel.ErrorHandling;
 
 namespace LocalizeStay.Modules.Inventory.Domain.Partners;
 
-public sealed class Partner
+internal sealed class Partner
 {
-    public Guid Id { get; private set; }
-    public string PreselectionId { get; private set; } = string.Empty;
-    public string LegalName { get; private set; } = string.Empty;
-    public string? TradeName { get; private set; }
-    public LegalIdentifier LegalIdentifier { get; private set; } = null!;
-    public Contact PrimaryContact { get; private set; } = null!;
-    public DateTimeOffset CreatedAt { get; private set; }
-    public DateTimeOffset UpdatedAt { get; private set; }
+    internal Guid Id { get; private set; }
+    internal string PreselectionId { get; private set; } = string.Empty;
+    internal string LegalName { get; private set; } = string.Empty;
+    internal string? TradeName { get; private set; }
+    internal LegalIdentifier LegalIdentifier { get; private set; } = null!;
+    internal Contact PrimaryContact { get; private set; } = null!;
+    internal DateTimeOffset CreatedAt { get; private set; }
+    internal DateTimeOffset UpdatedAt { get; private set; }
 
     private Partner()
     {
     }
 
-    public static Partner Create(
+    internal static Partner Create(
         Guid id,
         string preselectionId,
         string legalName,
@@ -59,7 +59,7 @@ public sealed class Partner
         };
     }
 
-    public void UpdateLegalName(string legalName, DateTimeOffset updatedAt)
+    internal void UpdateLegalName(string legalName, DateTimeOffset updatedAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(legalName);
 
@@ -72,7 +72,7 @@ public sealed class Partner
         UpdatedAt = updatedAt.ToUniversalTime();
     }
 
-    public void UpdateTradeName(string? tradeName, DateTimeOffset updatedAt)
+    internal void UpdateTradeName(string? tradeName, DateTimeOffset updatedAt)
     {
         if (tradeName is not null && tradeName.Length > 180)
         {
@@ -83,7 +83,7 @@ public sealed class Partner
         UpdatedAt = updatedAt.ToUniversalTime();
     }
 
-    public void UpdatePrimaryContact(Contact primaryContact, DateTimeOffset updatedAt)
+    internal void UpdatePrimaryContact(Contact primaryContact, DateTimeOffset updatedAt)
     {
         ArgumentNullException.ThrowIfNull(primaryContact);
 
@@ -91,7 +91,7 @@ public sealed class Partner
         UpdatedAt = updatedAt.ToUniversalTime();
     }
 
-    public void ChangeLegalIdentifier(LegalIdentifier legalIdentifier, DateTimeOffset updatedAt)
+    internal void ChangeLegalIdentifier(LegalIdentifier legalIdentifier, DateTimeOffset updatedAt)
     {
         ArgumentNullException.ThrowIfNull(legalIdentifier);
 

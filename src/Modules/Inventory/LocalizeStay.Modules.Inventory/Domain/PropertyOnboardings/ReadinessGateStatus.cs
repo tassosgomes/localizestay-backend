@@ -1,6 +1,6 @@
 namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 
-public enum ReadinessGateStatus
+internal enum ReadinessGateStatus
 {
     Pending,
     Validated,
