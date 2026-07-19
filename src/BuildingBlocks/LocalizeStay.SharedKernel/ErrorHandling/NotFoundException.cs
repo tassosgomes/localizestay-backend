@@ -1,6 +1,15 @@
 namespace LocalizeStay.SharedKernel.ErrorHandling;
 
-public sealed class NotFoundException(string message) : DomainException(message)
+public sealed class NotFoundException : DomainException
 {
-    public override string ErrorCode => "resource_not_found";
+    public NotFoundException(string message) : base(message)
+    {
+    }
+
+    public NotFoundException(string message, string errorCode) : base(message)
+    {
+        ErrorCode = errorCode;
+    }
+
+    public override string ErrorCode { get; } = "resource_not_found";
 }

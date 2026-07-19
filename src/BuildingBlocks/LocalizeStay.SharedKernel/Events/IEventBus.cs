@@ -7,5 +7,5 @@ namespace LocalizeStay.SharedKernel.Events;
 /// </summary>
 public interface IEventBus
 {
-    Task PublishAsync<TEvent>(TEvent integrationEvent, CancellationToken cancellationToken) where TEvent : IIntegrationEvent;
+    public Task PublishAsync<TEvent>(TEvent integrationEvent, CancellationToken cancellationToken) where TEvent : IIntegrationEvent;
 }

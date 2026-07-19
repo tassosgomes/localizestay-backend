@@ -19,7 +19,7 @@ public sealed class OutboxProcessor<TDbContext>(
     ILogger<OutboxProcessor<TDbContext>> logger) : BackgroundService
     where TDbContext : DbContext, IHasOutbox
 {
-    private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
     private const int MaxRetryAttempts = 5;
     private const int BatchSize = 20;
 
@@ -52,7 +52,7 @@ public sealed class OutboxProcessor<TDbContext>(
     {
         try
         {
-            await Task.Delay(PollingInterval, cancellationToken);
+            await Task.Delay(_pollingInterval, cancellationToken);
             return true;
         }
         catch (OperationCanceledException)

@@ -1,13 +1,4 @@
 using System.Reflection;
-using LocalizeStay.Modules.Booking;
-using LocalizeStay.Modules.Curation;
-using LocalizeStay.Modules.CustomerCare;
-using LocalizeStay.Modules.Discovery;
-using LocalizeStay.Modules.IdentityAccess;
-using LocalizeStay.Modules.Insights;
-using LocalizeStay.Modules.Inventory;
-using LocalizeStay.Modules.Operations;
-using LocalizeStay.Modules.Payments;
 using LocalizeStay.Contracts.Booking;
 using LocalizeStay.Contracts.Curation;
 using LocalizeStay.Contracts.CustomerCare;
@@ -17,6 +8,15 @@ using LocalizeStay.Contracts.Insights;
 using LocalizeStay.Contracts.Inventory;
 using LocalizeStay.Contracts.Operations;
 using LocalizeStay.Contracts.Payments;
+using LocalizeStay.Modules.Booking;
+using LocalizeStay.Modules.Curation;
+using LocalizeStay.Modules.CustomerCare;
+using LocalizeStay.Modules.Discovery;
+using LocalizeStay.Modules.IdentityAccess;
+using LocalizeStay.Modules.Insights;
+using LocalizeStay.Modules.Inventory;
+using LocalizeStay.Modules.Operations;
+using LocalizeStay.Modules.Payments;
 
 namespace LocalizeStay.ArchitectureTests;
 

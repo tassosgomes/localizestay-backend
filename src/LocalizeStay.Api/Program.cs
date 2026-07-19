@@ -12,6 +12,7 @@ using LocalizeStay.SharedKernel.ErrorHandling;
 using LocalizeStay.SharedKernel.HealthChecks;
 using LocalizeStay.SharedKernel.Modules;
 using LocalizeStay.SharedKernel.Observability;
+using LocalizeStay.SharedKernel.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,12 +37,19 @@ builder.AddLocalizeStayObservability();
 builder.Services.AddOpenApi();
 builder.Services.AddLocalizeStayProblemDetails();
 builder.Services.AddLocalizeStayHealthChecks();
+builder.Services.AddLocalizeStaySecurity(builder.Configuration);
+builder.Services.AddLocalizeStayRateLimiter(builder.Configuration);
 builder.Services.AddLocalizeStayModules(builder.Configuration, modules);
 
 var app = builder.Build();
 
+// Pipeline order is deliberate: exception handler wraps everything so no response leaks stack
+// traces; correlation propagates ids end to end; auth + rate limit run before module endpoints so
+// every protected route is authenticated and throttled uniformly (restful-api + production-readiness).
 app.UseExceptionHandler();
 app.UseCorrelationId();
+app.UseLocalizeStaySecurity();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
