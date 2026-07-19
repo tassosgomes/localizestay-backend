@@ -4,6 +4,41 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O filtro obrigatório `PortfolioOnboardingEndToEndTests` falha antes de qualquer requisição HTTP com `TypeLoadException` para `LocalizeStay.Modules.Inventory.Infrastructure.InventoryDbContext` em `ClearInventoryAsync`; portanto, o fluxo de devolução, resolução e reenvio não tem evidência executável.
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: `ApiContractTests` valida o schema apenas como referência existente no YAML e metadados gerais da rota; não associa cada schema de resposta ao contrato/tipo efetivo nem comprova payloads e `Location` reais nos creates, apesar do escopo explícito de 11.1 e 11.3.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2
+Categoria Técnica mais frequente: Erro de integração / Teste inadequado (1 de cada)
+Origem mais frequente: Contexto insuficiente / Task mal fragmentada (1 de cada)
+Indício de fragilidade estrutural? Sim
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Tornar explícita a estratégia de equivalência entre schemas OpenAPI e tipos/payloads HTTP em testes de contrato.
+- Template de Task: Exigir execução comprovada de cada fluxo E2E novo, além de sua compilação.
+- Skill: `dotnet-testing` pode incluir uma checagem de dependências transitivas/carregamento antes de validar cenários HTTP.
+
+---
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 10.0
 
 Modelo utilizado:
@@ -968,6 +1003,191 @@ Total de Problemas: 0
 Categoria Técnica mais frequente: N/A
 Origem mais frequente: N/A
 Indício de fragilidade estrutural? Não — os gates obrigatórios passaram e a integração OTLP, as métricas contratuais e a sanitização do histórico foram revisadas.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `ApiContractTests` carrega o YAML, mas só compara método e rota; não certifica `operationId`, status, headers, content types ou schemas das 18 operações exigidas.
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O E2E fecha a incorporação logo após a devolução da Curadoria e não executa a resolução, revalidação e reenvio obrigatórios no ciclo de retorno.
+
+3. Categoria Técnica: Falha de validação
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A CI coleta cobertura, mas não agrega nem impõe o limiar mínimo de 80% para lógica de negócio.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Sim — o gate de release pode ficar verde mesmo sem certificação completa do contrato, do ciclo de reenvio e da cobertura mínima.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a ferramenta/formato para agregação e enforcement da cobertura no CI.
+- Template de Task: Exigir que o teste de contrato relacione explicitamente cada dimensão contratual testada.
+- Skill: `dotnet-testing` pode incluir exemplo de threshold de cobertura em CI.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0 (Segunda revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: `ApiContractTests` inspeciona metadados, mas não executa HTTP nem valida payload/schema, `Location`, content types reais ou os erros 400, 401, 403, 404, 409, 422 e 429 exigidos pelo contrato.
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O E2E migra e limpa o schema Inventory, mas não comprova a atomicidade entre estado, auditoria e outbox nem o resultado da migration em banco limpo.
+
+3. Categoria Técnica: Erro de integração
+   Severidade: Média
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Na inicialização da factory, hosted services de outbox de módulos externos consultam tabelas inexistentes no banco de teste. Os filtros passam, porém a certificação não inicia sem erros de infraestrutura registrados.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Sim — o gate pode ficar verde sem comprovar o comportamento HTTP contratual e a transação de negócio exigidos para release.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Declarar a matriz obrigatória de respostas HTTP e a evidência de atomicidade outbox/auditoria por cenário.
+- Template de Task: Exigir assertions de banco para migrations e efeitos transacionais quando a feature usar outbox.
+- Skill: `dotnet-testing` pode reforçar testes de contrato por comportamento HTTP e asserções transacionais em Testcontainers.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0 (Terceira revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O teste de contrato lê o YAML e valida metadados das 18 rotas, mas só executa HTTP anônimo (401). Não comprova as respostas HTTP reais 400, 403, 404, 409, 422 e 429, nem os schemas/corpos e `Location` serializados em cada operação.
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O E2E confirma que migration, estado, auditoria e outbox coexistem no cenário feliz, porém não demonstra banco limpo antes da migration nem rollback atômico quando uma das gravações transacionais falha.
+
+3. Categoria Técnica: Violação de padrão arquitetural
+   Severidade: Alta
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet test LocalizeStay.sln --no-restore --collect:"XPlat Code Coverage"` falha em `EncapsulationTests.Domain_application_and_infrastructure_types_should_not_be_public` para `Inventory.Infrastructure`.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Sim — o pipeline pode validar metadados sem provar o comportamento HTTP e transacional exigido para o release, além de a suíte obrigatória estar vermelha.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Declarar os cenários HTTP comportamentais e o método de injeção de falha para demonstrar atomicidade.
+- Template de Task: Exigir que a matriz de contrato execute respostas reais, não apenas metadados.
+- Skill: `dotnet-testing` pode acrescentar orientação explícita para testes de rollback transacional com EF Core/Testcontainers.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0 (Quarta revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: `ApiContractTests` relaciona as 18 operações por metadata, mas não associa cada schema YAML ao response type ou JSON HTTP correspondente; qualquer tipo de resposta não nulo satisfaz o check atual.
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O parser não resolve `$ref` de `components/responses`; por isso não certifica por operação os Problem Details, o content type e o `Retry-After` de 429. O único 429 exercitado usa rota de cenário de teste, não uma operação F01 da matriz YAML.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Sim — mudanças de schema ou de Problem Details podem passar pelo gate sem que o contrato soberano as detecte.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Definir o mapeamento verificável entre schemas OpenAPI e responses HTTP, inclusive componentes reutilizáveis.
+- Template de Task: Exigir resolução de `$ref` e asserções de corpo/cabeçalho em testes de contrato.
+- Skill: `dotnet-testing` pode fornecer padrão para matrizes OpenAPI que validem schemas e componentes reutilizáveis.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0 (Quinta revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 5
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não
 Sugestão de melhoria no:
 - PRD: N/A
 - TechSpec: N/A

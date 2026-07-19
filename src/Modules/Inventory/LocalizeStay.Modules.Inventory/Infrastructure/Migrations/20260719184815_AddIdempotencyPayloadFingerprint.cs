@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class AddIdempotencyPayloadFingerprint : Migration
+    internal partial class AddIdempotencyPayloadFingerprint : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

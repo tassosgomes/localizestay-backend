@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Testcontainers.PostgreSql;
 
@@ -53,6 +55,10 @@ public sealed class LocalizeStayWebApplicationFactory : WebApplicationFactory<Pr
 
         builder.ConfigureTestServices(services =>
         {
+            // The production host registers one outbox worker per module. They are deliberately
+            // excluded from HTTP integration tests so asynchronous publishing cannot consume a
+            // message between an endpoint response and the persistence assertions that follow.
+            services.RemoveAll<IHostedService>();
             services.AddSingleton<IStartupFilter, TestScenarioEndpointStartupFilter>();
 
             services.PostConfigure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(

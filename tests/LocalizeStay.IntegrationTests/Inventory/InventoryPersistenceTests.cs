@@ -53,19 +53,27 @@ public sealed class InventoryPersistenceTests : IClassFixture<LocalizeStayWebApp
         // Arrange
         using var scope = _factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
-        await dbContext.Database.MigrateAsync();
-
         try
         {
-            // Act
+            // Start from a genuinely clean database, rather than merely checking a migration that
+            // another test might already have applied through the shared factory.
             await dbContext.Database.GetDbConnection().OpenAsync();
             await dbContext.Database.GetService<IMigrator>().MigrateAsync("0");
 
-            // Assert: after reverting to migration 0, only the EF history table remains.
+            (await dbContext.Database.GetAppliedMigrationsAsync()).Should().BeEmpty();
             var tables = (await GetInventoryTableNamesAsync(dbContext))
                 .Where(name => name != "__ef_migrations_history")
                 .ToList();
             tables.Should().BeEmpty();
+
+            // Apply the full Inventory chain to the clean database.
+            await dbContext.Database.MigrateAsync();
+
+            var appliedMigrations = await dbContext.Database.GetAppliedMigrationsAsync();
+            appliedMigrations.Should().BeEquivalentTo(
+                dbContext.Database.GetMigrations(),
+                options => options.WithStrictOrdering());
+            (await GetInventoryTableNamesAsync(dbContext)).Should().Contain("partners");
         }
         finally
         {

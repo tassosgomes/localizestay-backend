@@ -31,12 +31,16 @@ jobs:
       - name: Build
         run: dotnet build LocalizeStay.sln --no-restore --configuration Release
 
-      - name: Unit tests
+      - name: Verify formatting
+        run: dotnet format LocalizeStay.sln --verify-no-changes --no-restore
+
+      - name: Unit tests with coverage
         run: >
           dotnet test tests/LocalizeStay.UnitTests/LocalizeStay.UnitTests.csproj
           --no-build --configuration Release
+          --collect:"XPlat Code Coverage;Format=cobertura"
           --logger "trx;LogFileName=unit-tests.trx"
-          --results-directory TestResults
+          --results-directory TestResults/unit
 
       - name: Architecture tests
         run: >
@@ -45,12 +49,43 @@ jobs:
           --logger "trx;LogFileName=architecture-tests.trx"
           --results-directory TestResults
 
+      - name: Integration and contract tests with coverage
+        run: >
+          dotnet test tests/LocalizeStay.IntegrationTests/LocalizeStay.IntegrationTests.csproj
+          --no-build --configuration Release
+          --collect:"XPlat Code Coverage;Format=cobertura"
+          --logger "trx;LogFileName=integration-tests.trx"
+          --results-directory TestResults/integration
+
+      - name: Install coverage report generator
+        run: >
+          dotnet tool install --tool-path .tools
+          dotnet-reportgenerator-globaltool --version 5.4.12
+
+      - name: Aggregate Inventory business coverage
+        run: >
+          ./.tools/reportgenerator
+          -reports:"TestResults/**/coverage.cobertura.xml"
+          -targetdir:"TestResults/coverage"
+          -reporttypes:"HtmlInline;TextSummary"
+          -assemblyfilters:"+LocalizeStay.Modules.Inventory"
+
+      - name: Enforce Inventory business coverage threshold
+        shell: bash
+        run: |
+          COVERAGE=$(awk -F ': ' '/^Line coverage:/ { gsub(/%/, "", $2); print $2 }' TestResults/coverage/Summary.txt)
+          test -n "$COVERAGE"
+          awk -v coverage="$COVERAGE" 'BEGIN { exit coverage >= 80 ? 0 : 1 }' || {
+            echo "Inventory business coverage is ${COVERAGE}%; the required minimum is 80%."
+            exit 1
+          }
+
       - name: Publish test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: TestResults/**/*.trx
+          path: TestResults
           retention-days: 14
 
   publish-image:

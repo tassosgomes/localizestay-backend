@@ -116,7 +116,23 @@ telemetria.
 dotnet test                                              # tudo
 dotnet test tests/LocalizeStay.UnitTests                 # unitários
 dotnet test tests/LocalizeStay.ArchitectureTests          # guardrails de arquitetura
+dotnet test tests/LocalizeStay.IntegrationTests           # HTTP, PostgreSQL, contrato e fluxos F01
 ```
+
+### Certificação F01 — incorporação de parceiros e propriedades
+
+O contrato soberano é `.tasks/prd-incorporar-parceiros-e-propriedades/api-contract.yaml`. A suíte de
+integração valida as 18 operações contra as rotas expostas e exercita o fluxo parceiro → incorporação
+→ gates → pendências/comunicação → Curadoria → histórico/métricas em PostgreSQL via Testcontainers.
+
+```bash
+dotnet test tests/LocalizeStay.IntegrationTests --filter "FullyQualifiedName~ApiContractTests"
+dotnet test tests/LocalizeStay.IntegrationTests --filter "FullyQualifiedName~PortfolioOnboardingEndToEndTests"
+```
+
+As variáveis não secretas, migration/rollback, smoke tests, telemetria e bloqueios externos de aceite
+estão no [runbook de Portfolio Onboarding](docs/runbooks/portfolio-onboarding.md). Não há automação de
+WhatsApp ou e-mail: a API registra somente o resultado que a equipe processou.
 
 ## Como os testes de arquitetura protegem as fronteiras
 

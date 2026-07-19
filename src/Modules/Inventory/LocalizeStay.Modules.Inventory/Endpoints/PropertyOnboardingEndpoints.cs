@@ -14,13 +14,13 @@ internal static class PropertyOnboardingEndpoints
     public static void MapPropertyOnboardingEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var onboardings = endpoints.MapGroup("/api/v1/property-onboardings").WithTags("Property Onboardings");
-        onboardings.MapGet(string.Empty, ListAsync).RequireAuthorization(PortfolioOnboardingPermissions.Read);
-        onboardings.MapPost(string.Empty, CreateAsync).RequireAuthorization(PortfolioOnboardingPermissions.Write);
-        onboardings.MapGet("/{onboardingId:guid}", GetAsync).RequireAuthorization(PortfolioOnboardingPermissions.Read);
-        onboardings.MapPatch("/{onboardingId:guid}", UpdateAsync).RequireAuthorization(PortfolioOnboardingPermissions.Write);
-        onboardings.MapPost("/{onboardingId:guid}/submit-to-curation", SubmitAsync).RequireAuthorization(PortfolioOnboardingPermissions.Submit);
-        onboardings.MapPost("/{onboardingId:guid}/curation-returns", ReturnAsync).RequireAuthorization(PortfolioOnboardingPermissions.Write);
-        onboardings.MapPost("/{onboardingId:guid}/close", CloseAsync).RequireAuthorization(PortfolioOnboardingPermissions.Close);
+        onboardings.MapGet(string.Empty, ListAsync).WithName("listPropertyOnboardings").WithContractResponses<PropertyOnboardingListResponse>(200, 400, 401, 403, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Read);
+        onboardings.MapPost(string.Empty, CreateAsync).WithName("createPropertyOnboarding").WithContractResponses<PropertyOnboardingResponse>(201, 400, 401, 403, 404, 409, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Write);
+        onboardings.MapGet("/{onboardingId:guid}", GetAsync).WithName("getPropertyOnboarding").WithContractResponses<PropertyOnboardingResponse>(200, 400, 401, 403, 404, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Read);
+        onboardings.MapPatch("/{onboardingId:guid}", UpdateAsync).WithName("updatePropertyOnboarding").WithContractResponses<PropertyOnboardingResponse>(200, 400, 401, 403, 404, 409, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Write);
+        onboardings.MapPost("/{onboardingId:guid}/submit-to-curation", SubmitAsync).WithName("submitPropertyOnboardingToCuration").WithContractResponses<SubmissionResultResponse>(200, 400, 401, 403, 404, 409, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Submit);
+        onboardings.MapPost("/{onboardingId:guid}/curation-returns", ReturnAsync).WithName("createCurationReturn").WithContractResponses<CurationReturnResultResponse>(201, 400, 401, 403, 404, 409, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Write);
+        onboardings.MapPost("/{onboardingId:guid}/close", CloseAsync).WithName("closePropertyOnboarding").WithContractResponses<PropertyOnboardingResponse>(200, 400, 401, 403, 404, 409, 422, 429, 500).RequireAuthorization(PortfolioOnboardingPermissions.Close);
     }
 
     private static Task<PropertyOnboardingListResponse> ListAsync(int _page, int _size, Guid? partnerId, string? destinationId, string? lifecycleStatus, string? readinessStatus, string? pendingOwnerType, bool? overdue, string? sort, string? order, IDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.QueryAsync(new ListPropertyOnboardingsQuery(_page == 0 ? 1 : _page, _size == 0 ? 20 : _size, partnerId, destinationId, lifecycleStatus, readinessStatus, pendingOwnerType, overdue, sort, order), cancellationToken);

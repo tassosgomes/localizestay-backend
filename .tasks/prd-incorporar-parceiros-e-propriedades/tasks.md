@@ -47,7 +47,7 @@ Concluir consultas gerenciais, telemetria, validação automática do contrato, 
 - [x] 8.0 Implementar gates, pendências, comunicações e revisão de duplicidade
 - [x] 9.0 Implementar encaminhamento, devolução, encerramento e outbox
 - [x] 10.0 Implementar histórico, métricas e observabilidade de negócio
-- [ ] 11.0 Certificar contrato, documentação e prontidão de entrega
+- [x] 11.0 Certificar contrato, documentação e prontidão de entrega
 
 ## Rastreabilidade US → Tasks
 

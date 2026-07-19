@@ -15,11 +15,11 @@ internal static class PropertyOnboardingSubresourceEndpoints
     public static void MapPropertyOnboardingSubresourceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/property-onboardings/{onboardingId:guid}").WithTags("Readiness").RequireAuthorization(PortfolioOnboardingPermissions.Write);
-        group.MapPatch("/readiness-gates/{gateType}", UpdateGateAsync);
-        group.MapPost("/pending-issues", CreateIssueAsync);
-        group.MapPatch("/pending-issues/{pendingIssueId:guid}", UpdateIssueAsync);
-        group.MapPost("/communication-records", CreateCommunicationAsync);
-        group.MapPost("/duplicate-reviews", CreateDuplicateReviewAsync);
+        group.MapPatch("/readiness-gates/{gateType}", UpdateGateAsync).WithName("updateReadinessGate").WithContractResponses<PropertyOnboardingResponse>(200, 400, 401, 403, 404, 409, 422, 429, 500);
+        group.MapPost("/pending-issues", CreateIssueAsync).WithName("createPendingIssue").WithContractResponses<PendingIssueResponse>(201, 400, 401, 403, 404, 409, 422, 429, 500);
+        group.MapPatch("/pending-issues/{pendingIssueId:guid}", UpdateIssueAsync).WithName("updatePendingIssue").WithContractResponses<PendingIssueResponse>(200, 400, 401, 403, 404, 409, 422, 429, 500);
+        group.MapPost("/communication-records", CreateCommunicationAsync).WithName("createCommunicationRecord").WithContractResponses<CommunicationRecordResponse>(201, 400, 401, 403, 404, 409, 422, 429, 500);
+        group.MapPost("/duplicate-reviews", CreateDuplicateReviewAsync).WithName("createDuplicateReview").WithContractResponses<DuplicateReviewResultResponse>(201, 400, 401, 403, 404, 409, 422, 429, 500);
     }
 
     private static Task<PropertyOnboardingResponse> UpdateGateAsync(Guid onboardingId, string gateType, UpdateReadinessGateRequest request, ClaimsPrincipal user, IDispatcher dispatcher, CancellationToken cancellationToken) => dispatcher.SendAsync(new UpdateReadinessGateCommand(onboardingId, gateType, request.Status, request.Notes, request.Evidence, request.ContractReference, request.AuthorizedContact, request.OperationalChannelTest, Actor(user)), cancellationToken);
