@@ -351,6 +351,55 @@ Sugestão de melhoria no:
 
 ---
 
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 7.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Lógica incorreta
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Contexto Insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O filtro `readinessStatus` não considera pendências abertas, podendo classificar e retornar uma incorporação bloqueada como `ready`.
+
+2. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Os valores enum retornados pelo endpoint usam PascalCase de `Enum.ToString()` em vez dos valores camelCase definidos pelo API Contract.
+
+3. Categoria Técnica: Falha de validação
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Skill
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O cálculo do filtro `overdue` usa `DateTimeOffset.UtcNow` em vez de `IClock`, tornando a regra temporal não determinística.
+
+4. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Teste
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O arquivo e os cenários de integração `PropertyOnboardingEndpointsTests` exigidos pela tarefa não foram criados; o filtro de teste específico não encontrou cenários HTTP a executar.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4
+Categoria Técnica mais frequente: N/A (uma ocorrência por categoria)
+Origem mais frequente: N/A (uma ocorrência por origem)
+Indício de fragilidade estrutural? Sim — os mapeamentos de contrato e as regras de consulta não possuem cobertura HTTP dedicada, permitindo divergências de payload e de estado de prontidão.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Explicitar a conversão obrigatória dos enums internos para os valores camelCase do contrato.
+- Template de Task: Exigir que o comando filtrado valide ao menos um teste descoberto, especialmente quando a tarefa nomeia uma classe de integração.
+- Skill: `dotnet-testing` poderia incluir uma verificação explícita de que filtros de `dotnet test` encontraram casos de teste.
+
+---
+
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 6.0 (Revalidação)
 
 Modelo utilizado:
@@ -374,3 +423,109 @@ Sugestão de melhoria no:
 - Skill: N/A
 
 ---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 7.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Os testes focados de criação, conflito ativo, similaridade, filtros e paginação passam, mas a subtarefa 7.6 exige demonstrar que um novo ciclo para a mesma propriedade é permitido após o encerramento do anterior. Não há teste que encerre um ciclo e abra o seguinte.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Nomear o cenário de novo ciclo encerrado no plano de testes da operação de abertura.
+- Template de Task: Transformar os cenários de cobertura obrigatória em casos de teste nomeados.
+- Skill: `dotnet-testing` pode reforçar a cobertura de transições que liberam restrições de unicidade.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 7.0 (Revalidação final)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O mapper de resposta retorna `duplicateReview.reviews`, mas o contrato soberano exige `duplicateReview.candidates` e define `latestDecision`. O payload de criação, consulta e atualização de incorporação fica incompatível com `DuplicateReviewState`, impedindo o cliente de consumir os candidatos de similaridade.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Erro de integração
+Origem mais frequente: TechSpec
+Indício de fragilidade estrutural? Sim — os testes HTTP verificam somente `duplicateReview.required`, sem validar a forma completa do schema contratual.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar o mapeamento dos candidatos de similaridade e da última decisão para o DTO público.
+- Template de Task: Exigir teste de conformidade de schema nos payloads de cada `operationId`.
+- Skill: `dotnet-testing` pode incluir uma verificação explícita das propriedades obrigatórias do OpenAPI nos testes de integração.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 7.0 (Revalidação pós-correção de duplicateReview)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task mal fragmentada
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O mapper foi corrigido para retornar `duplicateReview.candidates` e `latestDecision`, mas o teste HTTP de similaridade continua verificando somente `duplicateReview.required`. Não há cobertura contra nova divergência do schema `DuplicateReviewState` nem dos campos obrigatórios de cada candidato.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Técnica mais frequente: Teste inadequado
+Origem mais frequente: Task mal fragmentada
+Indício de fragilidade estrutural? Sim — uma correção de incompatibilidade contratual não ganhou asserção de regressão no teste que cobre o endpoint.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: Exigir asserções dos campos alterados em toda correção de contrato HTTP.
+- Skill: `dotnet-testing` pode reforçar testes de regressão que verifiquem o payload completo de schemas corrigidos.
+
+---
+
+## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 7.0 (Revalidação final)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 5
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — a regressão contratual de `duplicateReview` passou a ter cobertura HTTP dos campos obrigatórios de `DuplicateCandidate` e de `latestDecision`.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
