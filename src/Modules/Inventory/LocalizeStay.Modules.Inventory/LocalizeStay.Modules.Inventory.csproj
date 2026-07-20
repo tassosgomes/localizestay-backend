@@ -16,4 +16,15 @@
     </PackageReference>
   </ItemGroup>
 
+  <!--
+    Inventory's own DbContext and Infrastructure types stay internal so only the Contracts assembly
+    is public (architecture baseline: Estrutura interna). The scoped InternalsVisibleTo entries let
+    test projects drive the real InventoryDbContext using the EF Core InMemory provider or a real
+    PostgreSQL Testcontainer, without exposing internals to other modules.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="LocalizeStay.UnitTests" />
+    <InternalsVisibleTo Include="LocalizeStay.IntegrationTests" />
+  </ItemGroup>
+
 </Project>

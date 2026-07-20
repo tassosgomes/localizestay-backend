@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using LocalizeStay.SharedKernel.ErrorHandling;
 using Microsoft.AspNetCore.Http;
 
 namespace LocalizeStay.SharedKernel.Correlation;
@@ -13,12 +14,22 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {
     public const string HeaderName = "X-Correlation-Id";
 
+    /// <summary>
+    /// Key under which the correlation id is mirrored into <see cref="HttpContext.Items"/>. The
+    /// <see cref="AsyncLocal{T}"/> backing <see cref="CorrelationIdAccessor"/> does not survive
+    /// exception propagation upstream, so we keep a parallel copy that the
+    /// <see cref="GlobalExceptionHandler"/> can read with the original <c>HttpContext</c> in hand.
+    /// </summary>
+    public const string ItemsKey = "__LocalizeStay.CorrelationId";
+
     public async Task InvokeAsync(HttpContext context, CorrelationIdAccessor correlationIdAccessor)
     {
         var correlationId = ResolveCorrelationId(context);
 
         correlationIdAccessor.Set(correlationId);
+        context.Items[ItemsKey] = correlationId;
         context.Response.Headers[HeaderName] = correlationId;
+        context.TraceIdentifier = correlationId;
         Activity.Current?.SetTag("correlation.id", correlationId);
 
         await next(context);

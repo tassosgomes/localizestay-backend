@@ -1,0 +1,1685 @@
+openapi: 3.1.0
+
+info:
+  title: LocalizeStay Portfolio Onboarding API
+  description: |
+    API de backoffice para registrar parceiros hoteleiros e acompanhar, de forma
+    independente, a incorporação de cada propriedade até o encaminhamento à Curadoria.
+
+    **PRD de origem:** `tasks/prd-incorporar-parceiros-e-propriedades/prd.md`
+    **Gerado em:** 2026-07-18
+
+    ## Premissas adotadas
+    - Autenticação por JWT emitido pelo LogTo; todos os endpoints exigem o escopo `staff`.
+    - As permissões em `x-required-permissions` são declarativas e de alto nível. O modelo
+      definitivo de autorização fina será definido com o time de plataforma.
+    - Versionamento por path em `/api/v1`, paths em inglês/plural/kebab-case e JSON em camelCase.
+    - Coleções usam paginação por `_page` e `_size`.
+    - Erros seguem RFC 9457 Problem Details, com `code` e `traceId` como extensões.
+    - Identificadores legais aceitam `cnpj`, `cpf` e `other`, sempre acompanhados de país.
+    - Contratos são mantidos no repositório documental oficial; a API persiste apenas referências.
+    - `preselectionId` e `destinationId` são referências opacas a capacidades upstream.
+    - WhatsApp e e-mail continuam humanos; a API registra somente o resultado processado.
+  version: 1.0.0
+  contact:
+    name: LocalizeStay — Oferta e Inventário
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Desenvolvimento local
+  - url: https://lstay-api.tasso.dev.br/api/v1
+    description: Desenvolvimento compartilhado
+  - url: https://api.localizestay.com/api/v1
+    description: Produção
+
+security:
+  - LogToBearer: []
+
+tags:
+  - name: Partners
+    description: Cadastro único de parceiros hoteleiros pré-selecionados
+  - name: Property Onboardings
+    description: Incorporação independente de propriedades ao portfólio
+  - name: Readiness
+    description: Gates, pendências e revisão de possíveis duplicidades
+  - name: Curation Handoff
+    description: Encaminhamento, devolução e encerramento da incorporação
+  - name: Metrics
+    description: Indicadores operacionais da incorporação
+
+paths:
+  /partners:
+    get:
+      summary: Listar parceiros hoteleiros
+      description: Retorna parceiros cadastrados, com filtros para identificação e situação.
+      operationId: listPartners
+      tags: [Partners]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          description: Busca por razão social, nome fantasia ou identificador legal.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 120
+            example: Mar do Sol
+        - name: legalIdentifierType
+          in: query
+          description: Filtra pelo tipo de identificador legal.
+          schema:
+            $ref: '#/components/schemas/LegalIdentifierType'
+      responses:
+        '200':
+          description: Parceiros retornados com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PartnerListResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Use debounce de 300 ms no campo de busca e não exponha o valor legal completo em listas.
+      x-backend-notes: Normalizar o identificador antes da busca e redigir dados pessoais em logs.
+
+    post:
+      summary: Cadastrar parceiro hoteleiro
+      description: |
+        Registra um parceiro pré-selecionado uma única vez. Um identificador legal já
+        associado a outro parceiro produz conflito e informa o recurso existente.
+      operationId: createPartner
+      tags: [Partners]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePartnerRequest'
+      responses:
+        '201':
+          description: Parceiro cadastrado com sucesso
+          headers:
+            Location:
+              description: URI do parceiro criado
+              schema:
+                type: string
+                example: /api/v1/partners/6b22179c-0143-4a70-97d3-c9648d77666a
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Partner'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Ao receber DUPLICATE_LEGAL_IDENTIFIER, ofereça navegação para o parceiro existente.
+      x-backend-notes: Aplicar unicidade sobre país, tipo e valor normalizado do identificador legal.
+
+  /partners/{partnerId}:
+    parameters:
+      - $ref: '#/components/parameters/PartnerId'
+
+    get:
+      summary: Consultar parceiro hoteleiro
+      operationId: getPartner
+      tags: [Partners]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:read]
+      responses:
+        '200':
+          description: Parceiro encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Partner'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mascare CPF/CNPJ por padrão e revele somente a usuários autorizados.
+      x-backend-notes: Autorizar a leitura antes de materializar dados pessoais do contato.
+
+    patch:
+      summary: Atualizar parceiro hoteleiro
+      description: Atualização parcial; propriedades e históricos de incorporação permanecem independentes.
+      operationId: updatePartner
+      tags: [Partners]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePartnerRequest'
+      responses:
+        '200':
+          description: Parceiro atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Partner'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Envie somente campos alterados e solicite confirmação antes de trocar o identificador legal.
+      x-backend-notes: Auditar alterações de identificador legal e repetir a verificação de duplicidade.
+
+  /property-onboardings:
+    get:
+      summary: Listar incorporações de propriedades
+      description: Retorna a fila operacional paginada com seus estados, bloqueios e prazos.
+      operationId: listPropertyOnboardings
+      tags: [Property Onboardings]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: partnerId
+          in: query
+          description: Filtra pelo parceiro proprietário.
+          schema:
+            type: string
+            format: uuid
+            example: 6b22179c-0143-4a70-97d3-c9648d77666a
+        - name: destinationId
+          in: query
+          description: Filtra pela referência do destino aprovado.
+          schema:
+            type: string
+            example: dest-porto-de-galinhas
+        - name: lifecycleStatus
+          in: query
+          description: Filtra pelo estado do ciclo de vida.
+          schema:
+            $ref: '#/components/schemas/OnboardingLifecycleStatus'
+        - name: readinessStatus
+          in: query
+          description: Filtra pela condição atual de prontidão.
+          schema:
+            $ref: '#/components/schemas/ReadinessStatus'
+        - name: pendingOwnerType
+          in: query
+          description: Filtra incorporações com pendência aberta sob uma responsabilidade.
+          schema:
+            $ref: '#/components/schemas/PendingOwnerType'
+        - name: overdue
+          in: query
+          description: Quando true, retorna incorporações acima de dez dias úteis sem encaminhamento.
+          schema:
+            type: boolean
+            example: true
+        - name: sort
+          in: query
+          description: Campo de ordenação.
+          schema:
+            type: string
+            enum: [openedAt, targetSubmissionAt, updatedAt, propertyName]
+            default: targetSubmissionAt
+            example: targetSubmissionAt
+        - name: order
+          in: query
+          description: Direção da ordenação.
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+            example: asc
+      responses:
+        '200':
+          description: Incorporações retornadas com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboardingListResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mostre estado e bloqueio também por texto/ícone; não dependa apenas de cores.
+      x-backend-notes: Projetar a listagem sem joins entre módulos; usar referências e projeções publicadas.
+
+    post:
+      summary: Abrir incorporação de propriedade
+      description: |
+        Abre um acompanhamento independente para uma propriedade de parceiro já cadastrado.
+        O backend valida a pré-seleção e o destino aprovado por seus contratos upstream.
+        Similaridade de nome ou endereço não impede a criação, mas cria revisão obrigatória
+        e mantém a incorporação bloqueada.
+      operationId: createPropertyOnboarding
+      tags: [Property Onboardings]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyOnboardingRequest'
+      responses:
+        '201':
+          description: Incorporação aberta; pode conter alerta de possível duplicidade
+          headers:
+            Location:
+              description: URI da incorporação criada
+              schema:
+                type: string
+                example: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboarding'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Se duplicateReview.required for true, destaque a revisão humana como bloqueio obrigatório.
+      x-backend-notes: Validar parceiro pré-selecionado e destino aprovado de forma síncrona; registrar snapshot descritivo mínimo.
+
+  /property-onboardings/{onboardingId}:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    get:
+      summary: Consultar incorporação de propriedade
+      operationId: getPropertyOnboarding
+      tags: [Property Onboardings]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:read]
+      responses:
+        '200':
+          description: Incorporação encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboarding'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Use blockingReasons para explicar exatamente o que impede o encaminhamento.
+      x-backend-notes: Calcular readinessStatus a partir de gates, pendências e revisão de duplicidade.
+
+    patch:
+      summary: Atualizar dados da propriedade
+      description: Atualiza parcialmente dados cadastrais da propriedade durante a incorporação.
+      operationId: updatePropertyOnboarding
+      tags: [Property Onboardings]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyOnboardingRequest'
+      responses:
+        '200':
+          description: Incorporação atualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboarding'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Envie somente campos alterados; mudanças de nome/endereço podem reabrir a revisão de duplicidade.
+      x-backend-notes: Reexecutar similaridade quando nome ou endereço mudar e preservar todas as versões no histórico.
+
+  /property-onboardings/{onboardingId}/readiness-gates/{gateType}:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+      - $ref: '#/components/parameters/GateType'
+
+    patch:
+      summary: Atualizar gate de prontidão
+      description: |
+        Registra validação, rejeição ou retorno a pendente de um gate. Evidências variam por
+        tipo: contrato assinado exige contractReference; autoridade exige authorizedContact;
+        canal operacional exige operationalChannelTest.
+      operationId: updateReadinessGate
+      tags: [Readiness]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReadinessGateRequest'
+      responses:
+        '200':
+          description: Gate atualizado e prontidão recalculada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboarding'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mostre os campos condicionais conforme gateType e o autor/data da última validação.
+      x-backend-notes: Exigir evidência específica por gate, auditar a decisão e nunca armazenar o arquivo do contrato.
+
+  /property-onboardings/{onboardingId}/pending-issues:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    post:
+      summary: Registrar pendência da incorporação
+      operationId: createPendingIssue
+      tags: [Readiness]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePendingIssueRequest'
+      responses:
+        '201':
+          description: Pendência registrada
+          headers:
+            Location:
+              description: URI lógica da pendência criada
+              schema:
+                type: string
+                example: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119/pending-issues/1569a253-b269-4a70-824a-3a5b89414135
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingIssue'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Descrição, responsabilidade e data-alvo devem estar visíveis na fila operacional.
+      x-backend-notes: Toda pendência aberta bloqueia o encaminhamento; preserve abertura e autoria na auditoria.
+
+  /property-onboardings/{onboardingId}/pending-issues/{pendingIssueId}:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+      - $ref: '#/components/parameters/PendingIssueId'
+
+    patch:
+      summary: Atualizar pendência da incorporação
+      description: Resolve, cancela ou ajusta a responsabilidade de uma pendência sem apagar seu histórico.
+      operationId: updatePendingIssue
+      tags: [Readiness]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePendingIssueRequest'
+      responses:
+        '200':
+          description: Pendência atualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingIssue'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exija resolutionNote ao resolver ou cancelar uma pendência.
+      x-backend-notes: Não permitir exclusão física; registrar autor, instante e transição de estado.
+
+  /property-onboardings/{onboardingId}/communication-records:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    post:
+      summary: Registrar comunicação processada
+      description: Registra somente o resultado relevante de mensagem humana recebida por WhatsApp ou e-mail.
+      operationId: createCommunicationRecord
+      tags: [Readiness]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommunicationRecordRequest'
+      responses:
+        '201':
+          description: Resultado da comunicação registrado
+          headers:
+            Location:
+              description: URI lógica do registro de comunicação criado
+              schema:
+                type: string
+                example: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119/communication-records/7aa6d76d-50ca-4807-a46f-2bb5f1cfa8ef
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationRecord'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Não permita colar o conteúdo integral da conversa; solicite um resumo objetivo do resultado.
+      x-backend-notes: Calcular o SLA com calendário configurável e minimizar dados pessoais no resumo.
+
+  /property-onboardings/{onboardingId}/duplicate-reviews:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    post:
+      summary: Decidir possível duplicidade
+      description: |
+        Registra uma decisão humana sobre propriedades semelhantes. Se confirmada a duplicidade,
+        a incorporação é encerrada como duplicada; caso contrário, o bloqueio é removido.
+      operationId: createDuplicateReview
+      tags: [Readiness]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDuplicateReviewRequest'
+      responses:
+        '201':
+          description: Revisão registrada e incorporação recalculada
+          headers:
+            Location:
+              description: URI lógica da revisão criada
+              schema:
+                type: string
+                example: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119/duplicate-reviews/08e5b25d-205c-410b-b64e-4578fbd26688
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateReviewResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exiba lado a lado os candidatos e exija justificativa textual para a decisão.
+      x-backend-notes: Decisão é imutável; nova suspeita gera nova revisão e nunca sobrescreve a anterior.
+
+  /property-onboardings/{onboardingId}/submit-to-curation:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    post:
+      summary: Encaminhar propriedade à Curadoria
+      description: |
+        Encaminha somente quando todos os gates estão validados, não há pendências abertas
+        e nenhuma revisão de duplicidade está aguardando decisão. Registra a decisão e grava
+        o evento `oferta-inventario.propriedade-incorporada` na outbox transacional.
+      operationId: submitPropertyOnboardingToCuration
+      tags: [Curation Handoff]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:submit]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitToCurationRequest'
+      responses:
+        '200':
+          description: Propriedade encaminhada e evento registrado para publicação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Desabilite a ação com explicações de blockingReasons, mas trate 422 por concorrência.
+      x-backend-notes: Alteração de estado e outbox devem compartilhar a mesma transação local e chave de idempotência.
+
+  /property-onboardings/{onboardingId}/curation-returns:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    post:
+      summary: Registrar devolução da Curadoria
+      description: Reabre a incorporação, preserva o envio anterior e cria as pendências informadas.
+      operationId: createCurationReturn
+      tags: [Curation Handoff]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCurationReturnRequest'
+      responses:
+        '201':
+          description: Devolução registrada e incorporação reaberta
+          headers:
+            Location:
+              description: URI lógica da devolução criada
+              schema:
+                type: string
+                example: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119/curation-returns/9e644320-d8f1-4c29-bf5e-4efec4cf38d6
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurationReturnResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mostre a devolução na linha do tempo e destaque as novas pendências.
+      x-backend-notes: Aceitar idempotencyKey para tolerar repetição e preservar todos os ciclos de envio/devolução.
+
+  /property-onboardings/{onboardingId}/close:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    post:
+      summary: Encerrar incorporação sem exclusão
+      description: Encerra o acompanhamento com motivo obrigatório e mantém todas as evidências consultáveis.
+      operationId: closePropertyOnboarding
+      tags: [Curation Handoff]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:close]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClosePropertyOnboardingRequest'
+      responses:
+        '200':
+          description: Incorporação encerrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboarding'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exija seleção do motivo e justificativa; informe que uma nova incorporação poderá ser aberta depois.
+      x-backend-notes: Não excluir dados nem reabrir o mesmo ciclo; nova avaliação cria outro propertyOnboarding.
+
+  /property-onboardings/{onboardingId}/history:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingId'
+
+    get:
+      summary: Consultar histórico da incorporação
+      description: Retorna uma linha do tempo auditável de alterações, decisões, envios e devoluções.
+      operationId: listPropertyOnboardingHistory
+      tags: [Property Onboardings]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Histórico retornado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryListResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Apresente em ordem cronológica reversa e permita navegação por teclado.
+      x-backend-notes: Retornar descrições seguras; não vazar tokens, documentos ou conteúdo integral de mensagens.
+
+  /property-onboarding-metrics:
+    get:
+      summary: Consultar métricas de incorporação
+      description: Consolida prazo, completude, devoluções e volume preparado para Curadoria.
+      operationId: getPropertyOnboardingMetrics
+      tags: [Metrics]
+      x-required-scope: staff
+      x-required-permissions: [portfolio-onboarding:metrics]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Início do período em UTC.
+          schema:
+            type: string
+            format: date-time
+            example: '2026-07-01T00:00:00Z'
+        - name: to
+          in: query
+          required: true
+          description: Fim exclusivo do período em UTC.
+          schema:
+            type: string
+            format: date-time
+            example: '2026-08-01T00:00:00Z'
+        - name: destinationId
+          in: query
+          description: Filtra por destino aprovado.
+          schema:
+            type: string
+            example: dest-porto-de-galinhas
+      responses:
+        '200':
+          description: Métricas calculadas com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyOnboardingMetrics'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exiba numerador e denominador junto às porcentagens para evitar interpretações enganosas.
+      x-backend-notes: Consumir projeção própria; calendário útil é configuração operacional versionada.
+
+components:
+  securitySchemes:
+    LogToBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT emitido pelo LogTo para o API Resource da LocalizeStay, com escopo staff.
+
+  parameters:
+    Page:
+      name: _page
+      in: query
+      description: Número da página, iniciando em 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+        example: 1
+    PageSize:
+      name: _size
+      in: query
+      description: Quantidade de itens por página, no máximo 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        example: 20
+    PartnerId:
+      name: partnerId
+      in: path
+      required: true
+      description: Identificador público do parceiro.
+      schema:
+        type: string
+        format: uuid
+        example: 6b22179c-0143-4a70-97d3-c9648d77666a
+    OnboardingId:
+      name: onboardingId
+      in: path
+      required: true
+      description: Identificador público da incorporação.
+      schema:
+        type: string
+        format: uuid
+        example: 8f881f31-05fd-4af0-bf29-e6ef08f10119
+    PendingIssueId:
+      name: pendingIssueId
+      in: path
+      required: true
+      description: Identificador público da pendência.
+      schema:
+        type: string
+        format: uuid
+        example: 1569a253-b269-4a70-824a-3a5b89414135
+    GateType:
+      name: gateType
+      in: path
+      required: true
+      description: Gate obrigatório a atualizar.
+      schema:
+        $ref: '#/components/schemas/ReadinessGateType'
+
+  responses:
+    BadRequest:
+      description: Requisição malformada ou parâmetro sintaticamente inválido
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/bad-request
+            title: Requisição inválida
+            status: 400
+            detail: O parâmetro _page deve ser maior que zero.
+            instance: /api/v1/property-onboardings
+            code: BAD_REQUEST
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Unauthorized:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/unauthorized
+            title: Autenticação necessária
+            status: 401
+            detail: Apresente um JWT válido emitido pelo LogTo.
+            instance: /api/v1/property-onboardings
+            code: UNAUTHORIZED
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Forbidden:
+      description: Identidade autenticada sem autorização para a operação
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/forbidden
+            title: Operação não autorizada
+            status: 403
+            detail: A identidade não possui a permissão declarada para esta operação.
+            instance: /api/v1/property-onboardings
+            code: FORBIDDEN
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    NotFound:
+      description: Recurso ou referência upstream não encontrado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/not-found
+            title: Recurso não encontrado
+            status: 404
+            detail: A incorporação informada não existe.
+            instance: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119
+            code: PROPERTY_ONBOARDING_NOT_FOUND
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Conflict:
+      description: Conflito com unicidade, versão ou estado concorrente do recurso
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/duplicate-legal-identifier
+            title: Parceiro já cadastrado
+            status: 409
+            detail: O identificador legal já pertence a outro parceiro.
+            instance: /api/v1/partners
+            code: DUPLICATE_LEGAL_IDENTIFIER
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+            metadata:
+              conflictingResourceId: 6b22179c-0143-4a70-97d3-c9648d77666a
+    UnprocessableEntity:
+      description: Requisição válida que viola uma regra de negócio
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/onboarding-not-ready
+            title: Incorporação ainda não está pronta
+            status: 422
+            detail: Existem gates ou pendências que impedem o encaminhamento.
+            instance: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119/submit-to-curation
+            code: ONBOARDING_NOT_READY
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+            errors:
+              - field: readinessGates.signedContract
+                code: GATE_NOT_VALIDATED
+                message: O contrato assinado ainda não foi validado.
+    TooManyRequests:
+      description: Limite de requisições excedido
+      headers:
+        Retry-After:
+          description: Segundos até uma nova tentativa.
+          schema:
+            type: integer
+            example: 30
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/rate-limit
+            title: Muitas requisições
+            status: 429
+            detail: Aguarde antes de tentar novamente.
+            instance: /api/v1/property-onboardings
+            code: RATE_LIMIT_EXCEEDED
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    InternalServerError:
+      description: Falha interna inesperada sem exposição de detalhes sensíveis
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/internal-error
+            title: Erro interno
+            status: 500
+            detail: Ocorreu uma falha inesperada. Tente novamente mais tarde.
+            instance: /api/v1/property-onboardings
+            code: INTERNAL_ERROR
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+
+  schemas:
+    LegalIdentifierType:
+      type: string
+      enum: [cnpj, cpf, other]
+      description: cnpj para pessoa jurídica brasileira; cpf para pessoa física brasileira; other para outro documento aceito pelo Jurídico.
+      example: cnpj
+
+    LegalIdentifier:
+      type: object
+      required: [type, countryCode, value]
+      properties:
+        type:
+          $ref: '#/components/schemas/LegalIdentifierType'
+        countryCode:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          description: Código ISO 3166-1 alpha-2.
+          example: BR
+        value:
+          type: string
+          minLength: 5
+          maxLength: 40
+          description: Valor conforme informado; o backend mantém também uma forma normalizada para unicidade.
+          example: 12.345.678/0001-90
+
+    Contact:
+      type: object
+      required: [name, email, phone]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+          example: Marina Almeida
+        email:
+          type: string
+          format: email
+          example: marina.almeida@example.com
+        phone:
+          type: string
+          minLength: 8
+          maxLength: 30
+          example: '+55 81 99999-0101'
+
+    Partner:
+      type: object
+      required: [id, preselectionId, legalName, legalIdentifier, primaryContact, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 6b22179c-0143-4a70-97d3-c9648d77666a
+        preselectionId:
+          type: string
+          description: Referência opaca à pré-seleção comercial autorizada.
+          example: preselection-2026-0042
+        legalName:
+          type: string
+          example: Mar do Sol Hospedagens Ltda.
+        tradeName:
+          type: [string, 'null']
+          example: Pousada Mar do Sol
+        legalIdentifier:
+          $ref: '#/components/schemas/LegalIdentifier'
+        primaryContact:
+          $ref: '#/components/schemas/Contact'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-07-18T13:30:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-07-18T13:30:00Z'
+
+    CreatePartnerRequest:
+      type: object
+      required: [preselectionId, legalName, legalIdentifier, primaryContact]
+      properties:
+        preselectionId:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: preselection-2026-0042
+        legalName:
+          type: string
+          minLength: 2
+          maxLength: 180
+          example: Mar do Sol Hospedagens Ltda.
+        tradeName:
+          type: [string, 'null']
+          maxLength: 180
+          example: Pousada Mar do Sol
+        legalIdentifier:
+          $ref: '#/components/schemas/LegalIdentifier'
+        primaryContact:
+          $ref: '#/components/schemas/Contact'
+
+    UpdatePartnerRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        legalName:
+          type: string
+          minLength: 2
+          maxLength: 180
+          example: Mar do Sol Hospedagens Ltda.
+        tradeName:
+          type: [string, 'null']
+          maxLength: 180
+          example: Pousada Mar do Sol
+        legalIdentifier:
+          $ref: '#/components/schemas/LegalIdentifier'
+        primaryContact:
+          $ref: '#/components/schemas/Contact'
+
+    Pagination:
+      type: object
+      required: [page, size, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1, example: 1 }
+        size: { type: integer, minimum: 1, maximum: 100, example: 20 }
+        total: { type: integer, minimum: 0, example: 8 }
+        totalPages: { type: integer, minimum: 0, example: 1 }
+
+    PartnerListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PartnerSummary' }
+          example: []
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PartnerSummary:
+      type: object
+      required: [id, preselectionId, legalName, legalIdentifierType, maskedLegalIdentifier, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 6b22179c-0143-4a70-97d3-c9648d77666a }
+        preselectionId: { type: string, example: preselection-2026-0042 }
+        legalName: { type: string, example: Mar do Sol Hospedagens Ltda. }
+        tradeName: { type: [string, 'null'], example: Pousada Mar do Sol }
+        legalIdentifierType: { $ref: '#/components/schemas/LegalIdentifierType' }
+        maskedLegalIdentifier:
+          type: string
+          description: Identificador mascarado para uso seguro em listagens.
+          example: 12.***.***/****-90
+        updatedAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+
+    Address:
+      type: object
+      required: [street, number, district, city, state, postalCode, countryCode]
+      properties:
+        street: { type: string, maxLength: 180, example: Avenida Beira Mar }
+        number: { type: string, maxLength: 30, example: '250' }
+        complement: { type: [string, 'null'], maxLength: 120, example: Próximo à praça central }
+        district: { type: string, maxLength: 120, example: Centro }
+        city: { type: string, maxLength: 120, example: Ipojuca }
+        state: { type: string, minLength: 2, maxLength: 80, example: PE }
+        postalCode: { type: string, maxLength: 20, example: 55590-000 }
+        countryCode: { type: string, pattern: '^[A-Z]{2}$', example: BR }
+
+    PropertyInput:
+      type: object
+      required: [name, destinationId, address]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 180
+          example: Pousada Mar do Sol
+        destinationId:
+          type: string
+          description: Referência opaca ao destino aprovado para o piloto.
+          example: dest-porto-de-galinhas
+        address:
+          $ref: '#/components/schemas/Address'
+
+    OnboardingLifecycleStatus:
+      type: string
+      enum: [inProgress, submittedToCuration, returnedByCuration, closed]
+      description: inProgress em preparação; submittedToCuration encaminhada; returnedByCuration reaberta por devolução; closed encerrada sem exclusão.
+      example: inProgress
+
+    ReadinessStatus:
+      type: string
+      enum: [blocked, ready]
+      description: blocked quando existe gate, pendência ou revisão impeditiva; ready quando pode ser encaminhada.
+      example: blocked
+
+    ReadinessGateType:
+      type: string
+      enum: [legalIdentification, commercialTerms, signedContract, authorizedContact, propertyBasics, operationalChannel]
+      description: Os seis elementos obrigatórios definidos pelo PRD.
+      example: signedContract
+
+    ReadinessGateStatus:
+      type: string
+      enum: [pending, validated, rejected]
+      example: pending
+
+    EvidenceReference:
+      type: object
+      required: [kind, reference, description]
+      properties:
+        kind:
+          type: string
+          enum: [officialDocument, contract, formalAuthorization, communication, other]
+          example: contract
+        reference:
+          type: string
+          maxLength: 500
+          description: Referência opaca, URI ou código no repositório oficial; não contém o arquivo.
+          example: legal/contracts/2026/LST-0042-v1
+        description:
+          type: string
+          maxLength: 300
+          example: Contrato de parceria assinado por ambas as partes
+
+    ContractReference:
+      type: object
+      required: [repositoryReference, signedAt, responsibleParties]
+      properties:
+        repositoryReference:
+          type: string
+          maxLength: 500
+          example: legal/contracts/2026/LST-0042-v1
+        contractNumber:
+          type: [string, 'null']
+          maxLength: 80
+          example: LST-0042/2026
+        signedAt:
+          type: string
+          format: date-time
+          example: '2026-07-17T18:00:00Z'
+        responsibleParties:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            maxLength: 180
+          description: Partes responsáveis registradas no contrato.
+          example: [LocalizeStay Ltda., Mar do Sol Hospedagens Ltda.]
+
+    OperationalChannelTest:
+      type: object
+      required: [channel, contact, testedAt, resultSummary]
+      properties:
+        channel:
+          type: string
+          enum: [whatsapp, email]
+          example: whatsapp
+        contact:
+          type: string
+          maxLength: 180
+          example: '+55 81 99999-0101'
+        testedAt:
+          type: string
+          format: date-time
+          example: '2026-07-18T11:45:00Z'
+        resultSummary:
+          type: string
+          maxLength: 500
+          example: Contato respondeu e confirmou o recebimento da mensagem de teste.
+
+    ReadinessGate:
+      type: object
+      required: [type, status, updatedAt]
+      properties:
+        type: { $ref: '#/components/schemas/ReadinessGateType' }
+        status: { $ref: '#/components/schemas/ReadinessGateStatus' }
+        notes:
+          type: [string, 'null']
+          example: Aguardando conferência do Jurídico.
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/EvidenceReference' }
+          example: []
+        validatedAt:
+          type: [string, 'null']
+          format: date-time
+          example: null
+        validatedBy:
+          type: [string, 'null']
+          description: Subject (`sub`) da identidade LogTo que realizou a validação.
+          example: null
+        updatedAt:
+          type: string
+          format: date-time
+          example: '2026-07-18T13:30:00Z'
+
+    PendingOwnerType:
+      type: string
+      enum: [staff, partner, legal, commercial, curation, other]
+      example: partner
+
+    PendingIssueStatus:
+      type: string
+      enum: [open, resolved, cancelled]
+      example: open
+
+    PendingIssue:
+      type: object
+      required: [id, description, ownerType, status, openedAt, openedBy]
+      properties:
+        id: { type: string, format: uuid, example: 1569a253-b269-4a70-824a-3a5b89414135 }
+        description: { type: string, example: Confirmar poderes do responsável indicado. }
+        ownerType: { $ref: '#/components/schemas/PendingOwnerType' }
+        assigneeId: { type: [string, 'null'], example: null }
+        relatedGateType:
+          oneOf:
+            - $ref: '#/components/schemas/ReadinessGateType'
+            - type: 'null'
+          example: authorizedContact
+        status: { $ref: '#/components/schemas/PendingIssueStatus' }
+        targetAt: { type: [string, 'null'], format: date-time, example: '2026-07-21T18:00:00Z' }
+        openedAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+        openedBy: { type: string, example: logto|staff-0192 }
+        resolvedAt: { type: [string, 'null'], format: date-time, example: null }
+        resolutionNote: { type: [string, 'null'], example: null }
+
+    DuplicateCandidate:
+      type: object
+      required: [propertyId, name, addressSummary, matchReasons, similarityScore]
+      properties:
+        propertyId: { type: string, format: uuid, example: c0a943d1-986e-42ce-a9d8-f80979ee7639 }
+        name: { type: string, example: Pousada Mar do Sol }
+        addressSummary: { type: string, example: Avenida Beira Mar, 250 — Ipojuca/PE }
+        matchReasons:
+          type: array
+          items: { type: string, enum: [similarName, similarAddress] }
+          example: [similarName, similarAddress]
+        similarityScore: { type: number, minimum: 0, maximum: 1, example: 0.94 }
+
+    DuplicateReviewState:
+      type: object
+      required: [required, candidates]
+      properties:
+        required: { type: boolean, example: true }
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/DuplicateCandidate' }
+          example: []
+        latestDecision:
+          type: [string, 'null']
+          enum: [notDuplicate, duplicateOfExistingProperty, null]
+          example: null
+
+    BlockingReason:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [gateNotValidated, pendingIssueOpen, duplicateReviewRequired, onboardingClosed, alreadySubmitted]
+          example: gateNotValidated
+        message: { type: string, example: O gate de contrato assinado ainda não foi validado. }
+        relatedResourceId: { type: [string, 'null'], example: signedContract }
+
+    PropertyOnboarding:
+      type: object
+      required:
+        [id, partnerId, preselectionId, property, lifecycleStatus, readinessStatus, readinessGates,
+         pendingIssues, duplicateReview, blockingReasons, openedAt, targetSubmissionAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 8f881f31-05fd-4af0-bf29-e6ef08f10119 }
+        partnerId: { type: string, format: uuid, example: 6b22179c-0143-4a70-97d3-c9648d77666a }
+        preselectionId: { type: string, example: preselection-2026-0042 }
+        property:
+          $ref: '#/components/schemas/PropertyInput'
+        lifecycleStatus:
+          $ref: '#/components/schemas/OnboardingLifecycleStatus'
+        readinessStatus:
+          $ref: '#/components/schemas/ReadinessStatus'
+        readinessGates:
+          type: array
+          minItems: 6
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ReadinessGate' }
+          example: []
+        pendingIssues:
+          type: array
+          items: { $ref: '#/components/schemas/PendingIssue' }
+          example: []
+        duplicateReview:
+          $ref: '#/components/schemas/DuplicateReviewState'
+        blockingReasons:
+          type: array
+          items: { $ref: '#/components/schemas/BlockingReason' }
+          example: []
+        openedAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+        targetSubmissionAt:
+          type: string
+          format: date-time
+          description: Prazo calculado de dez dias úteis segundo o calendário configurado.
+          example: '2026-08-01T21:00:00Z'
+        submittedAt: { type: [string, 'null'], format: date-time, example: null }
+        closedAt: { type: [string, 'null'], format: date-time, example: null }
+        closeReason: { type: [string, 'null'], example: null }
+        createdAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+
+    CreatePropertyOnboardingRequest:
+      type: object
+      required: [partnerId, preselectionId, property]
+      properties:
+        partnerId: { type: string, format: uuid, example: 6b22179c-0143-4a70-97d3-c9648d77666a }
+        preselectionId: { type: string, example: preselection-2026-0042 }
+        property:
+          $ref: '#/components/schemas/PropertyInput'
+
+    UpdatePropertyOnboardingRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 2, maxLength: 180, example: Pousada Mar do Sol Boutique }
+        address: { $ref: '#/components/schemas/Address' }
+
+    PropertyOnboardingListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PropertyOnboardingSummary' }
+          example: []
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PropertyOnboardingSummary:
+      type: object
+      required:
+        [id, partnerId, partnerDisplayName, propertyName, destinationId, lifecycleStatus,
+         readinessStatus, openPendingIssueCount, blockingReasons, openedAt, targetSubmissionAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 8f881f31-05fd-4af0-bf29-e6ef08f10119 }
+        partnerId: { type: string, format: uuid, example: 6b22179c-0143-4a70-97d3-c9648d77666a }
+        partnerDisplayName: { type: string, example: Pousada Mar do Sol }
+        propertyName: { type: string, example: Pousada Mar do Sol }
+        destinationId: { type: string, example: dest-porto-de-galinhas }
+        lifecycleStatus: { $ref: '#/components/schemas/OnboardingLifecycleStatus' }
+        readinessStatus: { $ref: '#/components/schemas/ReadinessStatus' }
+        openPendingIssueCount: { type: integer, minimum: 0, example: 1 }
+        blockingReasons:
+          type: array
+          items: { $ref: '#/components/schemas/BlockingReason' }
+          example: []
+        openedAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+        targetSubmissionAt: { type: string, format: date-time, example: '2026-08-01T21:00:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+
+    UpdateReadinessGateRequest:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { $ref: '#/components/schemas/ReadinessGateStatus' }
+        notes: { type: [string, 'null'], maxLength: 1000, example: Documento conferido com o Jurídico. }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/EvidenceReference' }
+          example: []
+        contractReference:
+          oneOf:
+            - $ref: '#/components/schemas/ContractReference'
+            - type: 'null'
+        authorizedContact:
+          oneOf:
+            - $ref: '#/components/schemas/Contact'
+            - type: 'null'
+        operationalChannelTest:
+          oneOf:
+            - $ref: '#/components/schemas/OperationalChannelTest'
+            - type: 'null'
+
+    CreatePendingIssueRequest:
+      type: object
+      required: [description, ownerType]
+      properties:
+        description: { type: string, minLength: 3, maxLength: 1000, example: Confirmar poderes do responsável indicado. }
+        ownerType: { $ref: '#/components/schemas/PendingOwnerType' }
+        assigneeId: { type: [string, 'null'], maxLength: 120, example: null }
+        relatedGateType:
+          oneOf:
+            - $ref: '#/components/schemas/ReadinessGateType'
+            - type: 'null'
+        targetAt: { type: [string, 'null'], format: date-time, example: '2026-07-21T18:00:00Z' }
+
+    UpdatePendingIssueRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        description: { type: string, minLength: 3, maxLength: 1000, example: Confirmar autorização formal do responsável. }
+        ownerType: { $ref: '#/components/schemas/PendingOwnerType' }
+        assigneeId: { type: [string, 'null'], maxLength: 120, example: logto|staff-0192 }
+        targetAt: { type: [string, 'null'], format: date-time, example: '2026-07-22T18:00:00Z' }
+        status: { $ref: '#/components/schemas/PendingIssueStatus' }
+        resolutionNote: { type: [string, 'null'], maxLength: 1000, example: Autorização formal validada. }
+
+    CommunicationRecord:
+      type: object
+      required: [id, channel, receivedAt, processedAt, resultSummary, processedWithinSla, createdBy, createdAt]
+      properties:
+        id: { type: string, format: uuid, example: 7aa6d76d-50ca-4807-a46f-2bb5f1cfa8ef }
+        channel: { type: string, enum: [whatsapp, email], example: whatsapp }
+        receivedAt: { type: string, format: date-time, example: '2026-07-18T10:00:00Z' }
+        processedAt: { type: string, format: date-time, example: '2026-07-18T12:30:00Z' }
+        resultSummary: { type: string, example: Responsável enviou a referência da autorização formal. }
+        processedWithinSla: { type: boolean, example: true }
+        createdBy: { type: string, example: logto|staff-0192 }
+        createdAt: { type: string, format: date-time, example: '2026-07-18T12:32:00Z' }
+
+    CreateCommunicationRecordRequest:
+      type: object
+      required: [channel, receivedAt, processedAt, resultSummary]
+      properties:
+        channel: { type: string, enum: [whatsapp, email], example: whatsapp }
+        receivedAt: { type: string, format: date-time, example: '2026-07-18T10:00:00Z' }
+        processedAt: { type: string, format: date-time, example: '2026-07-18T12:30:00Z' }
+        resultSummary: { type: string, minLength: 3, maxLength: 1000, example: Responsável enviou a referência da autorização formal. }
+
+    CreateDuplicateReviewRequest:
+      type: object
+      required: [idempotencyKey, decision, justification]
+      properties:
+        idempotencyKey:
+          type: string
+          format: uuid
+          example: 6a58c80f-a0f4-4431-b9f5-9b2202531c60
+        decision:
+          type: string
+          enum: [notDuplicate, duplicateOfExistingProperty]
+          example: notDuplicate
+        existingPropertyId:
+          type: [string, 'null']
+          format: uuid
+          description: Obrigatório quando decision for duplicateOfExistingProperty.
+          example: null
+        justification:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          example: Endereços próximos, porém estabelecimentos e inscrições legais distintos.
+
+    DuplicateReview:
+      type: object
+      required: [id, decision, justification, reviewedAt, reviewedBy]
+      properties:
+        id: { type: string, format: uuid, example: 08e5b25d-205c-410b-b64e-4578fbd26688 }
+        decision: { type: string, enum: [notDuplicate, duplicateOfExistingProperty], example: notDuplicate }
+        existingPropertyId: { type: [string, 'null'], format: uuid, example: null }
+        justification: { type: string, example: Endereços próximos, porém estabelecimentos e inscrições legais distintos. }
+        reviewedAt: { type: string, format: date-time, example: '2026-07-19T14:00:00Z' }
+        reviewedBy: { type: string, example: logto|staff-0192 }
+
+    DuplicateReviewResult:
+      type: object
+      required: [review, onboarding]
+      properties:
+        review: { $ref: '#/components/schemas/DuplicateReview' }
+        onboarding: { $ref: '#/components/schemas/PropertyOnboarding' }
+
+    SubmitToCurationRequest:
+      type: object
+      required: [idempotencyKey, decisionNote]
+      properties:
+        idempotencyKey:
+          type: string
+          format: uuid
+          example: e5267ad9-87e2-492f-b5a2-c2555be5d71f
+        decisionNote:
+          type: string
+          minLength: 3
+          maxLength: 1000
+          example: Todos os gates e evidências foram revisados pela Operação.
+
+    IntegrationEventReference:
+      type: object
+      required: [id, type, version, occurredAt]
+      properties:
+        id: { type: string, format: uuid, example: f7578dce-2592-4628-9899-91f1bafc6b85 }
+        type: { type: string, const: oferta-inventario.propriedade-incorporada, example: oferta-inventario.propriedade-incorporada }
+        version: { type: integer, const: 1, example: 1 }
+        occurredAt: { type: string, format: date-time, example: '2026-07-28T15:00:00Z' }
+
+    SubmissionResult:
+      type: object
+      required: [onboarding, integrationEvent]
+      properties:
+        onboarding: { $ref: '#/components/schemas/PropertyOnboarding' }
+        integrationEvent: { $ref: '#/components/schemas/IntegrationEventReference' }
+
+    CurationReturnIssueInput:
+      type: object
+      required: [description, ownerType]
+      properties:
+        description: { type: string, minLength: 3, maxLength: 1000, example: Corrigir divergência no endereço da propriedade. }
+        ownerType: { $ref: '#/components/schemas/PendingOwnerType' }
+        relatedGateType:
+          oneOf:
+            - $ref: '#/components/schemas/ReadinessGateType'
+            - type: 'null'
+
+    CreateCurationReturnRequest:
+      type: object
+      required: [idempotencyKey, reasonCode, reason, issues]
+      properties:
+        idempotencyKey: { type: string, format: uuid, example: d7553dbb-5209-43e3-9f52-9303d8ef3bf3 }
+        curationReference: { type: [string, 'null'], maxLength: 120, example: curation-review-0081 }
+        reasonCode:
+          type: string
+          enum: [missingData, inconsistentData]
+          description: Classificação usada para medir devoluções atribuíveis à F01.
+          example: inconsistentData
+        reason: { type: string, minLength: 3, maxLength: 1000, example: Dados cadastrais inconsistentes com a evidência apresentada. }
+        issues:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CurationReturnIssueInput' }
+
+    CurationReturn:
+      type: object
+      required: [id, reasonCode, reason, issues, returnedAt, returnedBy]
+      properties:
+        id: { type: string, format: uuid, example: 9e644320-d8f1-4c29-bf5e-4efec4cf38d6 }
+        curationReference: { type: [string, 'null'], example: curation-review-0081 }
+        reasonCode: { type: string, enum: [missingData, inconsistentData], example: inconsistentData }
+        reason: { type: string, example: Dados cadastrais inconsistentes com a evidência apresentada. }
+        issues:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CurationReturnIssueInput' }
+        returnedAt: { type: string, format: date-time, example: '2026-07-29T14:00:00Z' }
+        returnedBy: { type: string, example: logto|staff-0281 }
+
+    CurationReturnResult:
+      type: object
+      required: [curationReturn, onboarding]
+      properties:
+        curationReturn: { $ref: '#/components/schemas/CurationReturn' }
+        onboarding: { $ref: '#/components/schemas/PropertyOnboarding' }
+
+    ClosePropertyOnboardingRequest:
+      type: object
+      required: [reasonCode, reason]
+      properties:
+        reasonCode:
+          type: string
+          enum: [partnerWithdrawal, eligibilityFailure, noResponse, duplicateProperty, commercialDecision, other]
+          example: partnerWithdrawal
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          example: O parceiro solicitou a interrupção da avaliação neste ciclo.
+
+    HistoryEntry:
+      type: object
+      required: [id, type, occurredAt, actorId, summary]
+      properties:
+        id: { type: string, format: uuid, example: 988dfbb9-b013-498d-8149-d0ced9fe4a20 }
+        type:
+          type: string
+          enum: [onboardingOpened, propertyUpdated, gateUpdated, issueOpened, issueUpdated, communicationRecorded, duplicateReviewed, submittedToCuration, returnedByCuration, onboardingClosed]
+          example: gateUpdated
+        occurredAt: { type: string, format: date-time, example: '2026-07-18T15:20:00Z' }
+        actorId: { type: string, example: logto|staff-0192 }
+        summary: { type: string, example: Gate de contrato assinado validado. }
+        metadata:
+          type: object
+          additionalProperties: true
+          example: { gateType: signedContract, previousStatus: pending, newStatus: validated }
+
+    HistoryListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/HistoryEntry' }
+          example: []
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    MetricRatio:
+      type: object
+      required: [numerator, denominator, percentage]
+      properties:
+        numerator: { type: integer, minimum: 0, example: 7 }
+        denominator: { type: integer, minimum: 0, example: 8 }
+        percentage: { type: number, minimum: 0, maximum: 100, example: 87.5 }
+
+    StatusCount:
+      type: object
+      required: [status, count]
+      properties:
+        status: { $ref: '#/components/schemas/OnboardingLifecycleStatus' }
+        count: { type: integer, minimum: 0, example: 5 }
+
+    PropertyOnboardingMetrics:
+      type: object
+      required:
+        [from, to, totalOpened, propertiesPreparedForCuration, submittedWithinTenBusinessDays,
+         curationReturnRate, completeGatesSubmissionRate, communicationsWithinFourBusinessHours, byLifecycleStatus]
+      properties:
+        from: { type: string, format: date-time, example: '2026-07-01T00:00:00Z' }
+        to: { type: string, format: date-time, example: '2026-08-01T00:00:00Z' }
+        totalOpened: { type: integer, minimum: 0, example: 9 }
+        propertiesPreparedForCuration: { type: integer, minimum: 0, example: 8 }
+        submittedWithinTenBusinessDays: { $ref: '#/components/schemas/MetricRatio' }
+        curationReturnRate: { $ref: '#/components/schemas/MetricRatio' }
+        completeGatesSubmissionRate: { $ref: '#/components/schemas/MetricRatio' }
+        communicationsWithinFourBusinessHours: { $ref: '#/components/schemas/MetricRatio' }
+        byLifecycleStatus:
+          type: array
+          items: { $ref: '#/components/schemas/StatusCount' }
+          example: []
+
+    ValidationError:
+      type: object
+      required: [code, message]
+      properties:
+        field: { type: [string, 'null'], example: legalIdentifier.value }
+        code: { type: string, example: INVALID_LEGAL_IDENTIFIER }
+        message: { type: string, example: O identificador legal não atende ao formato esperado. }
+
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details com extensões estáveis da LocalizeStay.
+      required: [type, title, status, code, traceId]
+      properties:
+        type: { type: string, format: uri-reference, example: https://api.localizestay.com/problems/onboarding-not-ready }
+        title: { type: string, example: Incorporação ainda não está pronta }
+        status: { type: integer, minimum: 400, maximum: 599, example: 422 }
+        detail: { type: [string, 'null'], example: Existem gates ou pendências que impedem o encaminhamento. }
+        instance: { type: [string, 'null'], format: uri-reference, example: /api/v1/property-onboardings/8f881f31-05fd-4af0-bf29-e6ef08f10119 }
+        code: { type: string, example: ONBOARDING_NOT_READY }
+        traceId: { type: string, example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/ValidationError' }
+          example: []
+        metadata:
+          type: object
+          additionalProperties: true
+          example: { conflictingResourceId: 6b22179c-0143-4a70-97d3-c9648d77666a }

@@ -13,6 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Moq" />
     <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,6 +22,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\BuildingBlocks\LocalizeStay.SharedKernel\LocalizeStay.SharedKernel.csproj" />
+    <!--
+      Inventory internals are made visible to this assembly via InternalsVisibleTo so the shared
+      BusinessAuditWriter can be driven against the real InventoryDbContext with the EF Core InMemory
+      provider (dotnet-testing baseline), without exposing internals to other modules.
+    -->
+    <ProjectReference Include="..\..\src\Modules\Inventory\LocalizeStay.Modules.Inventory\LocalizeStay.Modules.Inventory.csproj" />
   </ItemGroup>
 
 </Project>

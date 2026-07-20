@@ -8,16 +8,16 @@ namespace LocalizeStay.SharedKernel.Events;
 /// </summary>
 public interface IIntegrationEvent
 {
-    Guid EventId { get; }
+    public Guid EventId { get; }
 
-    DateTimeOffset OccurredOnUtc { get; }
+    public DateTimeOffset OccurredOnUtc { get; }
 
     /// <summary>Correlates this event with the request or process that originated it.</summary>
-    string CorrelationId { get; }
+    public string CorrelationId { get; }
 
     /// <summary>Identifier of the message or command that caused this event, if any.</summary>
-    string? CausationId { get; }
+    public string? CausationId { get; }
 
     /// <summary>Schema version of this event's payload. Incompatible changes require a new version.</summary>
-    int Version { get; }
+    public int Version { get; }
 }

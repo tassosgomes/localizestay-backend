@@ -1,0 +1,138 @@
+namespace LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
+
+internal sealed class ReadinessGate
+{
+    internal Guid Id { get; private set; }
+    internal ReadinessGateType Type { get; private set; }
+    internal ReadinessGateStatus Status { get; private set; }
+    internal string? Notes { get; private set; }
+    internal ContractReference? ContractReference { get; private set; }
+    internal IReadOnlyList<EvidenceReference> Evidence => _evidence.AsReadOnly();
+    internal DateTimeOffset? ValidatedAt { get; private set; }
+    internal string? ValidatedBy { get; private set; }
+    internal DateTimeOffset UpdatedAt { get; private set; }
+
+    private readonly List<EvidenceReference> _evidence = [];
+
+    private ReadinessGate()
+    {
+    }
+
+    internal static ReadinessGate Create(ReadinessGateType type, DateTimeOffset now)
+    {
+        return new ReadinessGate
+        {
+            Id = Guid.NewGuid(),
+            Type = type,
+            Status = ReadinessGateStatus.Pending,
+            UpdatedAt = now.ToUniversalTime(),
+        };
+    }
+
+    internal void Validate(IReadOnlyList<EvidenceReference> evidence, ContractReference? contractReference, string validatedBy, DateTimeOffset validatedAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatedBy);
+        ArgumentNullException.ThrowIfNull(evidence);
+
+        ValidateEvidenceForType(evidence);
+        if (Type == ReadinessGateType.SignedContract && contractReference is null)
+            throw new ArgumentException("Signed contract gate requires a contract reference.", nameof(contractReference));
+
+        _evidence.Clear();
+        _evidence.AddRange(evidence);
+        ContractReference = contractReference;
+        Status = ReadinessGateStatus.Validated;
+        ValidatedAt = validatedAt.ToUniversalTime();
+        ValidatedBy = validatedBy.Trim();
+        UpdatedAt = validatedAt.ToUniversalTime();
+    }
+
+    internal void Validate(IReadOnlyList<EvidenceReference> evidence, string validatedBy, DateTimeOffset validatedAt)
+    {
+        var contractEvidence = Type == ReadinessGateType.SignedContract ? evidence.FirstOrDefault(item => item.Kind == EvidenceKind.Contract) : null;
+        var contractReference = contractEvidence is null ? null : new ContractReference(contractEvidence.Reference, "legacy-reference", validatedAt, ["Legacy contract party"]);
+        Validate(evidence, contractReference, validatedBy, validatedAt);
+    }
+
+    internal void Reject(string notes, DateTimeOffset updatedAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(notes);
+
+        Status = ReadinessGateStatus.Rejected;
+        Notes = notes.Trim();
+        ValidatedAt = null;
+        ValidatedBy = null;
+        ContractReference = null;
+        UpdatedAt = updatedAt.ToUniversalTime();
+    }
+
+    internal void ResetToPending(DateTimeOffset updatedAt)
+    {
+        Status = ReadinessGateStatus.Pending;
+        Notes = null;
+        ValidatedAt = null;
+        ValidatedBy = null;
+        _evidence.Clear();
+        ContractReference = null;
+        UpdatedAt = updatedAt.ToUniversalTime();
+    }
+
+    private void ValidateEvidenceForType(IReadOnlyList<EvidenceReference> evidence)
+    {
+        if (evidence.Count == 0)
+        {
+            throw new ArgumentException($"Gate '{Type}' requires at least one evidence reference.", nameof(evidence));
+        }
+
+        var requiredKind = Type switch
+        {
+            ReadinessGateType.SignedContract => EvidenceKind.Contract,
+            ReadinessGateType.AuthorizedContact => EvidenceKind.FormalAuthorization,
+            ReadinessGateType.OperationalChannel => EvidenceKind.Communication,
+            _ => (EvidenceKind?)null,
+        };
+
+        if (requiredKind.HasValue && !evidence.Any(e => e.Kind == requiredKind.Value))
+        {
+            throw new ArgumentException(
+                $"Gate '{Type}' requires at least one evidence of kind '{requiredKind.Value}'.",
+                nameof(evidence));
+        }
+    }
+}
+
+internal enum EvidenceKind
+{
+    OfficialDocument,
+    Contract,
+    FormalAuthorization,
+    Communication,
+    Other,
+}
+
+internal sealed record EvidenceReference
+{
+    internal EvidenceKind Kind { get; }
+    internal string Reference { get; }
+    internal string Description { get; }
+
+    internal EvidenceReference(EvidenceKind kind, string reference, string description)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+
+        if (reference.Length > 500)
+        {
+            throw new ArgumentException("Reference must be at most 500 characters.", nameof(reference));
+        }
+
+        if (description.Length > 300)
+        {
+            throw new ArgumentException("Description must be at most 300 characters.", nameof(description));
+        }
+
+        Kind = kind;
+        Reference = reference.Trim();
+        Description = description.Trim();
+    }
+}

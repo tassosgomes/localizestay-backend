@@ -12,13 +12,13 @@ namespace LocalizeStay.ArchitectureTests;
 /// </summary>
 public class EncapsulationTests
 {
-    private static readonly string[] InternalLayers = ["Domain", "Application", "Infrastructure"];
+    private static readonly string[] _internalLayers = ["Domain", "Application", "Infrastructure"];
 
     public static IEnumerable<object[]> ModulesWithLayers()
     {
         foreach (var (moduleName, assembly) in ModuleAssemblies.Modules)
         {
-            foreach (var layer in InternalLayers)
+            foreach (var layer in _internalLayers)
             {
                 yield return [moduleName, assembly, layer];
             }

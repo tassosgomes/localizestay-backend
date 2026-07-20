@@ -10,7 +10,7 @@ namespace LocalizeStay.SharedKernel.Outbox;
 /// </summary>
 public static class OutboxMessageFactory
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web);
 
     public static OutboxMessage FromIntegrationEvent<TEvent>(TEvent integrationEvent) where TEvent : IIntegrationEvent
     {
@@ -19,7 +19,7 @@ public static class OutboxMessageFactory
         var eventType = integrationEvent.GetType();
         var assemblyQualifiedName = eventType.AssemblyQualifiedName
             ?? throw new InvalidOperationException($"Integration event type '{eventType}' has no assembly-qualified name.");
-        var content = JsonSerializer.Serialize(integrationEvent, eventType, SerializerOptions);
+        var content = JsonSerializer.Serialize(integrationEvent, eventType, _serializerOptions);
 
         return OutboxMessage.Create(assemblyQualifiedName, content, integrationEvent.CorrelationId, integrationEvent.OccurredOnUtc);
     }

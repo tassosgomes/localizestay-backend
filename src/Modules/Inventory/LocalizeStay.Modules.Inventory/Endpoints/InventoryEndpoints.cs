@@ -18,6 +18,11 @@ internal static class InventoryEndpoints
             .WithName("GetInventoryModuleStatus")
             .WithTags("Inventory")
             .Produces<InventoryModuleStatusResponse>();
+
+        endpoints.MapPartnerEndpoints();
+        endpoints.MapPropertyOnboardingEndpoints();
+        endpoints.MapPropertyOnboardingSubresourceEndpoints();
+        endpoints.MapPropertyOnboardingReadEndpoints();
     }
 
     private static async Task<InventoryModuleStatusResponse> GetModuleStatusAsync(

@@ -73,6 +73,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalizeStay.ArchitectureTe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalizeStay.UnitTests", "tests\LocalizeStay.UnitTests\LocalizeStay.UnitTests.csproj", "{EFC170B4-B3E0-454C-B76C-BFD7251A44F0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalizeStay.IntegrationTests", "tests\LocalizeStay.IntegrationTests\LocalizeStay.IntegrationTests.csproj", "{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -347,6 +349,18 @@ Global
 		{EFC170B4-B3E0-454C-B76C-BFD7251A44F0}.Release|x64.Build.0 = Release|Any CPU
 		{EFC170B4-B3E0-454C-B76C-BFD7251A44F0}.Release|x86.ActiveCfg = Release|Any CPU
 		{EFC170B4-B3E0-454C-B76C-BFD7251A44F0}.Release|x86.Build.0 = Release|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Debug|x64.Build.0 = Debug|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Debug|x86.Build.0 = Debug|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Release|x64.ActiveCfg = Release|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Release|x64.Build.0 = Release|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Release|x86.ActiveCfg = Release|Any CPU
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -385,5 +399,6 @@ Global
 		{4FE1C503-7690-4BC9-902F-90CBCA3ABA57} = {96B1DB1A-13DC-C5B0-EB3D-8036B1502A08}
 		{171D75B8-2F7A-4B33-BC92-8AB7AC045563} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{EFC170B4-B3E0-454C-B76C-BFD7251A44F0} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{F6746E54-92EE-4CA1-A1D1-DD44F9B6B921} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

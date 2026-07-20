@@ -1,3 +1,6 @@
+using LocalizeStay.Modules.Inventory.Domain.Partners;
+using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
+using LocalizeStay.SharedKernel.Auditing;
 using LocalizeStay.SharedKernel.Outbox;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +16,17 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
     public const string SchemaName = "inventory";
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    public DbSet<Partner> Partners => Set<Partner>();
+
+    public DbSet<PropertyOnboarding> PropertyOnboardings => Set<PropertyOnboarding>();
+
+    public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
+
+    /// <summary>
+    /// Append-only business audit rows owned by this schema (ADR-003).
+    /// </summary>
+    public DbSet<BusinessAuditEntry> BusinessAuditEntries => Set<BusinessAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -16,17 +16,17 @@ public interface IModule
     /// Canonical module name. Matches the bounded context and, by convention, the PostgreSQL schema
     /// the module owns.
     /// </summary>
-    string Name { get; }
+    public string Name { get; }
 
     /// <summary>
     /// Registers the module's own services — DbContext, CQRS handlers, validators, background
     /// processors — in the composition-root container. Called once during host startup.
     /// </summary>
-    void RegisterServices(IServiceCollection services, IConfiguration configuration);
+    public void RegisterServices(IServiceCollection services, IConfiguration configuration);
 
     /// <summary>
     /// Maps the module's public HTTP endpoints. Called once during host startup, after routing has
     /// been configured. Modules with no public endpoints yet may leave this a no-op.
     /// </summary>
-    void MapEndpoints(IEndpointRouteBuilder endpoints);
+    public void MapEndpoints(IEndpointRouteBuilder endpoints);
 }

@@ -6,13 +6,13 @@ namespace LocalizeStay.SharedKernel.Correlation;
 /// </summary>
 public sealed class CorrelationIdAccessor : ICorrelationIdAccessor
 {
-    private static readonly AsyncLocal<string?> Current = new();
+    private static readonly AsyncLocal<string?> _current = new();
 
-    public string CorrelationId => Current.Value ??= Guid.NewGuid().ToString("n");
+    public string CorrelationId => _current.Value ??= Guid.NewGuid().ToString("n");
 
     public void Set(string correlationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(correlationId);
-        Current.Value = correlationId;
+        _current.Value = correlationId;
     }
 }
