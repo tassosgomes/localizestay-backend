@@ -71,4 +71,8 @@ appsettings.*.local.json
 !.env.example
 
 .tasks
+!.tasks/
+!.tasks/prd-incorporar-parceiros-e-propriedades/
+.tasks/prd-incorporar-parceiros-e-propriedades/*
+!.tasks/prd-incorporar-parceiros-e-propriedades/api-contract.yaml
 .agents

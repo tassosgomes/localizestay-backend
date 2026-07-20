@@ -121,7 +121,7 @@ dotnet test tests/LocalizeStay.IntegrationTests           # HTTP, PostgreSQL, co
 
 ### Certificação F01 — incorporação de parceiros e propriedades
 
-O contrato soberano é `.tasks/prd-incorporar-parceiros-e-propriedades/api-contract.yaml`. A suíte de
+O contrato soberano, versionado junto ao código, é `.tasks/prd-incorporar-parceiros-e-propriedades/api-contract.yaml`. A suíte de
 integração valida as 18 operações contra as rotas expostas e exercita o fluxo parceiro → incorporação
 → gates → pendências/comunicação → Curadoria → histórico/métricas em PostgreSQL via Testcontainers.
 
