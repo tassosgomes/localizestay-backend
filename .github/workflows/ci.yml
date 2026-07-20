@@ -73,8 +73,12 @@ jobs:
       - name: Enforce Inventory business coverage threshold
         shell: bash
         run: |
-          COVERAGE=$(awk -F ': ' '/^Line coverage:/ { gsub(/%/, "", $2); print $2 }' TestResults/coverage/Summary.txt)
-          test -n "$COVERAGE"
+          COVERAGE=$(awk -F ': ' '/^[[:space:]]*Line coverage:/ { gsub(/%/, "", $2); print $2; exit }' TestResults/coverage/Summary.txt)
+          if [ -z "$COVERAGE" ]; then
+            echo "Unable to read Inventory business coverage from TestResults/coverage/Summary.txt."
+            sed -n '1,120p' TestResults/coverage/Summary.txt
+            exit 1
+          fi
           awk -v coverage="$COVERAGE" 'BEGIN { exit coverage >= 80 ? 0 : 1 }' || {
             echo "Inventory business coverage is ${COVERAGE}%; the required minimum is 80%."
             exit 1
