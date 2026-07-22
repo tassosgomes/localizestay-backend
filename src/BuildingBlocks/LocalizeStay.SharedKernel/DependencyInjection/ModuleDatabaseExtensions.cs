@@ -28,6 +28,9 @@ public static class ModuleDatabaseExtensions
         services.AddHealthChecks()
             .AddDbContextCheck<TDbContext>($"{schemaName}-database", tags: [HealthCheckExtensions.ReadyTag]);
 
+        // Hosted services start in registration order. Applying migrations first guarantees the
+        // outbox processor never polls a schema that has not been created yet.
+        services.AddHostedService<ModuleDatabaseMigrationService<TDbContext>>();
         services.AddHostedService<OutboxProcessor<TDbContext>>();
 
         return services;

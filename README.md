@@ -105,6 +105,10 @@ curl http://localhost:5080/health/ready
 curl http://localhost:5080/api/inventory/status
 ```
 
+Na inicialização, a API aplica automaticamente as migrations de cada módulo antes de iniciar os
+processadores de outbox. Em um banco vazio, aguarde o log de migrações concluídas antes de usar os
+endpoints.
+
 A connection string padrão (`appsettings.json`, chave `ConnectionStrings:LocalizeStay`) aponta para o
 Postgres do `docker-compose.dev.yml`. OpenTelemetry só exporta via OTLP se
 `OpenTelemetry:OtlpEndpoint` estiver configurado; sem isso, a aplicação roda normalmente sem exportar
