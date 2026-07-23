@@ -1,7 +1,9 @@
+using LocalizeStay.Modules.Inventory.Application.LegalPolicies;
 using LocalizeStay.Modules.Inventory.Application.Timing;
 using LocalizeStay.Modules.Inventory.Application.Upstream;
 using LocalizeStay.Modules.Inventory.Endpoints;
 using LocalizeStay.Modules.Inventory.Infrastructure;
+using LocalizeStay.Modules.Inventory.Infrastructure.LegalPolicies;
 using LocalizeStay.Modules.Inventory.Infrastructure.Timing;
 using LocalizeStay.Modules.Inventory.Infrastructure.Upstream;
 using LocalizeStay.SharedKernel.Auditing;
@@ -37,6 +39,11 @@ public sealed class InventoryModule : IModule
         services.AddSingleton<IPartnerPreselectionValidator, ConfiguredPartnerPreselectionValidator>();
         services.AddSingleton<IDestinationEligibilityValidator, ConfiguredDestinationEligibilityValidator>();
         services.AddSingleton<IBusinessCalendar, ConfiguredBusinessCalendar>();
+        services.AddOptions<LegalPolicyOptions>()
+            .Bind(configuration.GetSection(LegalPolicyOptions.SectionName))
+            .Validate(LegalPolicyOptionsValidator.Validate, "Inventory legal policies must contain exactly two entries — flexible and nonRefundable — each with a non-empty title, rulesSummary and ruleSetVersion.")
+            .ValidateOnStart();
+        services.AddSingleton<ILegalPolicyCatalog, ConfiguredLegalPolicyCatalog>();
         // BusinessAuditWriter<InventoryDbContext> tracks entries on this module's own DbContext
         // without committing, so mutations and their audit rows share a single SaveChangesAsync
         // (ADR-003: ownership da auditoria por módulo).

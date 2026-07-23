@@ -114,6 +114,30 @@ public static class SecurityServiceCollectionExtensions
                 policy.AuthenticationSchemes.Add(AuthenticationScheme);
                 policy.RequireAuthenticatedUser();
                 policy.AddRequirements(new PermissionRequirement(PortfolioOnboardingPermissions.Metrics));
+            })
+            .AddPolicy(CommercialOfferPermissions.Read, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(CommercialOfferPermissions.Read));
+            })
+            .AddPolicy(CommercialOfferPermissions.Write, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(CommercialOfferPermissions.Write));
+            })
+            .AddPolicy(CommercialOfferPermissions.Review, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(CommercialOfferPermissions.Review));
+            })
+            .AddPolicy(CommercialOfferPermissions.Metrics, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(CommercialOfferPermissions.Metrics));
             });
 
         return services;

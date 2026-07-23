@@ -53,3 +53,24 @@ public static class PortfolioOnboardingPermissions
         Metrics,
     ];
 }
+
+/// <summary>
+/// Catalog of the high-level permissions declared on the F02 contract. Endpoints reference these
+/// via <see cref="AuthorizationOptions"/>, never by raw string literals.
+/// </summary>
+public static class CommercialOfferPermissions
+{
+    public const string Read = "commercial-offers:read";
+    public const string Write = "commercial-offers:write";
+    public const string Review = "commercial-offers:review";
+    public const string Metrics = "commercial-offers:metrics";
+
+    /// <summary>Every policy registered by <see cref="SecurityServiceCollectionExtensions.AddLocalizeStaySecurity"/>.</summary>
+    public static readonly IReadOnlyCollection<string> All =
+    [
+        Read,
+        Write,
+        Review,
+        Metrics,
+    ];
+}
