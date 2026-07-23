@@ -1,0 +1,1344 @@
+openapi: 3.1.0
+
+info:
+  title: LocalizeStay Commercial Offers API
+  description: |
+    API de backoffice para estruturar políticas, acomodações e tarifas comerciais
+    de propriedades incorporadas, validar a oferta por um segundo operador e
+    encaminhá-la à revisão.
+
+    **PRD de origem:** `tasks/prd-estruturar-acomodacoes-tarifas-e-politicas/prd.md`
+    **Gerado em:** 2026-07-22
+
+    ## Premissas adotadas
+    - Autenticação por JWT emitido pelo LogTo; todos os endpoints exigem o escopo `staff`.
+    - Permissões declarativas: `commercial-offers:read`, `commercial-offers:write`,
+      `commercial-offers:review` e `commercial-offers:metrics`.
+    - Versionamento em `/api/v1`, paths em inglês/plural/kebab-case e JSON em camelCase.
+    - Coleções usam `_page` e `_size`; erros seguem RFC 9457 Problem Details.
+    - Valores monetários são inteiros em centavos, exclusivamente em BRL.
+    - Políticas usam textos jurídicos versionados e aprovados; a API não recebe texto livre.
+    - Alterações incrementam `revision` e invalidam a validação vigente.
+    - Exclusão física só é permitida antes do primeiro envio; depois disso, usa-se desativação.
+    - O envio publica `oferta-inventario.oferta-estruturada` por outbox transacional.
+    - O indicador de processamento em quatro horas úteis reutiliza os registros de
+      comunicação humana definidos pelo contrato de F01.
+  version: 1.0.0
+  contact:
+    name: LocalizeStay — Oferta e Inventário
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Desenvolvimento local
+  - url: https://lstay-api.tasso.dev.br/api/v1
+    description: Desenvolvimento compartilhado
+  - url: https://api.localizestay.com/api/v1
+    description: Produção
+
+security:
+  - LogToBearer: []
+
+tags:
+  - name: Commercial Offers
+    description: Fila, resumo, completude e estado da oferta comercial
+  - name: Commercial Policies
+    description: Políticas padronizadas e política padrão da propriedade
+  - name: Accommodations
+    description: Acomodações, ocupação e configuração estrutural
+  - name: Rates
+    description: Períodos e condições tarifárias em BRL
+  - name: Offer Workflow
+    description: Validação independente, envio e histórico
+  - name: Metrics
+    description: Indicadores operacionais de prazo, completude e retrabalho
+
+paths:
+  /commercial-offers:
+    get:
+      summary: Listar ofertas comerciais
+      description: Retorna a fila operacional paginada com completude, estado, pendências e prazos.
+      operationId: listCommercialOffers
+      tags: [Commercial Offers]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: propertyId
+          in: query
+          description: Filtra pela propriedade incorporada.
+          schema: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        - name: status
+          in: query
+          description: Filtra pelo estado da oferta.
+          schema: { $ref: '#/components/schemas/CommercialOfferStatus' }
+        - name: hasBlockingIssues
+          in: query
+          description: Filtra ofertas com ou sem pendências bloqueantes.
+          schema: { type: boolean, example: true }
+        - name: overdue
+          in: query
+          description: Quando true, retorna ofertas fora do prazo operacional aplicável.
+          schema: { type: boolean, example: false }
+        - name: sort
+          in: query
+          description: Campo de ordenação.
+          schema: { type: string, enum: [updatedAt, completeInformationReceivedAt, targetSubmissionAt, propertyName], default: targetSubmissionAt, example: targetSubmissionAt }
+        - name: order
+          in: query
+          description: Direção da ordenação.
+          schema: { type: string, enum: [asc, desc], default: asc, example: asc }
+      responses:
+        '200':
+          description: Ofertas retornadas com sucesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialOfferListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mostre estado, prazo e bloqueios por texto e ícone; não dependa somente de cores.
+      x-backend-notes: Projetar a fila por leitura otimizada e indexar status, propertyId e targetSubmissionAt.
+
+  /properties/{propertyId}/commercial-offer:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Consultar oferta comercial
+      description: Retorna o agregado de leitura da oferta, sua revisão, validação atual e pendências.
+      operationId: getCommercialOffer
+      tags: [Commercial Offers]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      responses:
+        '200':
+          description: Oferta encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialOffer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Use pendingIssues para mensagens acionáveis e currentValidation para indicar quem ainda pode revisar.
+      x-backend-notes: Criar a oferta em rascunho de forma idempotente na primeira leitura após a incorporação.
+
+  /properties/{propertyId}/commercial-policies:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Listar políticas comerciais
+      operationId: listCommercialPolicies
+      tags: [Commercial Policies]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      parameters:
+        - name: status
+          in: query
+          description: Filtra políticas ativas ou inativas.
+          schema: { $ref: '#/components/schemas/ResourceStatus' }
+      responses:
+        '200':
+          description: Políticas retornadas com sucesso; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialPolicyListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Identifique claramente a política padrão e não permita editar o texto jurídico.
+      x-backend-notes: Resolver ruleSetVersion pelo catálogo jurídico aprovado e nunca copiar texto do cliente.
+    post:
+      summary: Cadastrar política comercial
+      description: Cadastra uma das duas políticas permitidas usando a versão jurídica vigente.
+      operationId: createCommercialPolicy
+      tags: [Commercial Policies]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCommercialPolicyRequest' }
+      responses:
+        '201':
+          description: Política cadastrada
+          headers:
+            Location:
+              description: URI da política criada
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/commercial-policies/e96dab42-0170-4b98-a937-cdc25ad2f68d }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exiba a consequência da política antes da confirmação e ofereça setAsDefault quando não houver padrão.
+      x-backend-notes: Impedir duplicidade de tipo ativo por propriedade e incrementar a revisão da oferta.
+
+  /properties/{propertyId}/commercial-policies/default:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    put:
+      summary: Definir política padrão
+      description: Substitui a política padrão e decide se acomodações existentes devem ser atualizadas.
+      operationId: setDefaultCommercialPolicy
+      tags: [Commercial Policies]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetDefaultCommercialPolicyRequest' }
+      responses:
+        '200':
+          description: Política padrão atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetDefaultCommercialPolicyResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Sempre peça a escolha applyToExistingAccommodations antes de confirmar a troca.
+      x-backend-notes: Atualizar padrão e possíveis associações na mesma transação, invalidando a validação vigente.
+
+  /properties/{propertyId}/commercial-policies/{policyId}:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/PolicyId'
+    patch:
+      summary: Atualizar política comercial
+      description: Permite desativar; se houver uso, exige substituta ativa e motivo.
+      operationId: updateCommercialPolicy
+      tags: [Commercial Policies]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCommercialPolicyRequest' }
+      responses:
+        '200':
+          description: Política atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Ao desativar uma política em uso, obrigue seleção de substituta e motivo.
+      x-backend-notes: Reassociar acomodações e tarifas afetadas atomicamente e preservar o histórico.
+    delete:
+      summary: Excluir política nunca enviada
+      description: Exclui fisicamente somente política nunca enviada e sem associações; caso contrário retorna 422.
+      operationId: deleteCommercialPolicy
+      tags: [Commercial Policies]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      responses:
+        '204': { description: Política excluída sem conteúdo de resposta }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Se a exclusão não for permitida, direcione o operador ao fluxo de desativação.
+      x-backend-notes: Bloquear exclusão quando everSubmitted for true, isDefault for true ou usageCount for maior que zero.
+
+  /properties/{propertyId}/accommodations:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Listar acomodações
+      operationId: listAccommodations
+      tags: [Accommodations]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          description: Filtra acomodações por estado.
+          schema: { $ref: '#/components/schemas/AccommodationStatus' }
+        - name: completeness
+          in: query
+          description: Filtra acomodações completas ou incompletas.
+          schema: { type: string, enum: [complete, incomplete], example: incomplete }
+        - name: sort
+          in: query
+          description: Campo de ordenação.
+          schema: { type: string, enum: [commercialName, createdAt, updatedAt], default: updatedAt, example: updatedAt }
+        - name: order
+          in: query
+          description: Direção da ordenação.
+          schema: { type: string, enum: [asc, desc], default: desc, example: desc }
+      responses:
+        '200':
+          description: Acomodações retornadas; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccommodationListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mostre as pendências por acomodação; descrição, fotos e comodidades editoriais não bloqueiam F02.
+      x-backend-notes: Calcular completeness somente com campos comerciais definidos neste contrato.
+    post:
+      summary: Criar acomodação em rascunho
+      description: Cria uma acomodação progressiva; somente o nome comercial é obrigatório no primeiro salvamento.
+      operationId: createAccommodation
+      tags: [Accommodations]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAccommodationRequest' }
+      responses:
+        '201':
+          description: Acomodação criada em rascunho
+          headers:
+            Location:
+              description: URI da acomodação criada
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/accommodations/7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Accommodation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Salve progressivamente e apresente a faixa infantil herdada antes de permitir override.
+      x-backend-notes: Herdar política padrão e faixa infantil da propriedade como referências explícitas, quando disponíveis.
+
+  /properties/{propertyId}/accommodations/{accommodationId}:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/AccommodationId'
+    get:
+      summary: Consultar acomodação
+      operationId: getAccommodation
+      tags: [Accommodations]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      responses:
+        '200':
+          description: Acomodação encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Accommodation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Use pendingIssues para levar foco ao primeiro campo comercial incompleto.
+      x-backend-notes: Retornar configuração efetiva de faixa infantil com sua origem.
+    patch:
+      summary: Atualizar acomodação
+      description: Atualização parcial; ocupação e camas são validadas em conjunto quando informadas.
+      operationId: updateAccommodation
+      tags: [Accommodations]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAccommodationRequest' }
+      responses:
+        '200':
+          description: Acomodação atualizada; a validação anterior pode ter sido invalidada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Accommodation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Ao desativar, peça motivo; envie null para remover um override e voltar à herança.
+      x-backend-notes: Validar maxAdults mais maxChildren menor ou igual a totalCapacity e invalidar validationId vigente.
+    delete:
+      summary: Excluir acomodação nunca enviada
+      description: Exclui fisicamente acomodação e tarifas somente quando nunca enviadas; caso contrário retorna 422.
+      operationId: deleteAccommodation
+      tags: [Accommodations]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      responses:
+        '204': { description: Acomodação excluída sem conteúdo de resposta }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Confirme a exclusão e direcione à desativação quando houver histórico de envio.
+      x-backend-notes: Efetuar hard delete somente para everSubmitted false e auditar a ação.
+
+  /properties/{propertyId}/accommodations/{accommodationId}/rates:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/AccommodationId'
+    get:
+      summary: Listar tarifas comerciais
+      operationId: listCommercialRates
+      tags: [Rates]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          description: Filtra tarifas por estado.
+          schema: { $ref: '#/components/schemas/RateStatus' }
+        - name: activeOn
+          in: query
+          description: Retorna tarifas aplicáveis à data informada.
+          schema: { type: string, format: date, example: '2026-12-20' }
+        - name: validFrom
+          in: query
+          description: Início mínimo do período consultado.
+          schema: { type: string, format: date, example: '2026-12-01' }
+        - name: validTo
+          in: query
+          description: Fim máximo do período consultado.
+          schema: { type: string, format: date, example: '2027-01-31' }
+        - name: sort
+          in: query
+          description: Campo de ordenação.
+          schema: { type: string, enum: [validFrom, validTo, basePriceCents, updatedAt], default: validFrom, example: validFrom }
+        - name: order
+          in: query
+          description: Direção da ordenação.
+          schema: { type: string, enum: [asc, desc], default: asc, example: asc }
+      responses:
+        '200':
+          description: Tarifas retornadas; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialRateListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Formate centavos como BRL e destaque lacunas ou sobreposições sem arredondar valores.
+      x-backend-notes: Indexar accommodationId, conditionCode, policyId, mealPlan, validFrom e validTo.
+    post:
+      summary: Criar tarifa em rascunho
+      description: Cria uma tarifa progressiva; a validação final exige todos os campos comerciais.
+      operationId: createCommercialRate
+      tags: [Rates]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCommercialRateRequest' }
+      responses:
+        '201':
+          description: Tarifa criada em rascunho
+          headers:
+            Location:
+              description: URI da tarifa criada
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/accommodations/7332fc6e-71aa-43cd-90b4-d2fd99c97787/rates/7eb68321-f5e7-49f7-9ee6-ef450496012b }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialRate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Permita rascunho, mas liste campos faltantes e informe que taxas obrigatórias já devem estar incluídas.
+      x-backend-notes: Detectar sobreposição pela mesma acomodação, conditionCode, policyId e mealPlan.
+
+  /properties/{propertyId}/accommodations/{accommodationId}/rates/{rateId}:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/AccommodationId'
+      - $ref: '#/components/parameters/RateId'
+    patch:
+      summary: Atualizar tarifa comercial
+      description: Atualização parcial; qualquer alteração comercial invalida a validação vigente.
+      operationId: updateCommercialRate
+      tags: [Rates]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCommercialRateRequest' }
+      responses:
+        '200':
+          description: Tarifa atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialRate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Avise sobre invalidação da validação e apresente conflitos de período no intervalo correspondente.
+      x-backend-notes: Validar intervalos inclusivos; o mínimo de noites aplicável é o da tarifa vigente no check-in.
+    delete:
+      summary: Excluir tarifa nunca enviada
+      description: Exclui fisicamente somente tarifa nunca enviada; caso contrário retorna 422 e exige desativação.
+      operationId: deleteCommercialRate
+      tags: [Rates]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      responses:
+        '204': { description: Tarifa excluída sem conteúdo de resposta }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Confirme a exclusão e ofereça desativação com motivo quando a tarifa tiver sido enviada.
+      x-backend-notes: Hard delete somente com everSubmitted false; preservar tarifas históricas por desativação.
+
+  /properties/{propertyId}/commercial-offer-validations:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    post:
+      summary: Validar oferta comercial
+      description: Cria evidência imutável de conferência por operador diferente do autor da revisão.
+      operationId: createCommercialOfferValidation
+      tags: [Offer Workflow]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:review]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOfferValidationRequest' }
+      responses:
+        '201':
+          description: Oferta validada na revisão informada
+          headers:
+            Location:
+              description: URI lógica da evidência criada
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/commercial-offer-validations/89386911-d42f-43f5-bd59-2fd6be2b9488 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferValidation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Desabilite a ação para o autor e mostre todos os blocking pendingIssues antes de validar.
+      x-backend-notes: Derivar reviewer do JWT, comparar com authoredBy.id e vincular a expectedRevision atomically.
+
+  /properties/{propertyId}/commercial-offer-submissions:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    post:
+      summary: Enviar oferta à revisão
+      description: Registra o envio idempotente e publica o evento de oferta estruturada via outbox.
+      operationId: createCommercialOfferSubmission
+      tags: [Offer Workflow]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOfferSubmissionRequest' }
+      responses:
+        '201':
+          description: Envio registrado e evento preparado para publicação
+          headers:
+            Location:
+              description: URI lógica do envio criado
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/commercial-offer-submissions/20d96ead-fcd4-4337-9680-ccb46ea91042 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferSubmission' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Reutilize a mesma Idempotency-Key em retry e confirme revisão e validação exibidas na tela.
+      x-backend-notes: Persistir envio, snapshot e outbox na mesma transação; entrega do evento é at-least-once.
+
+  /properties/{propertyId}/commercial-offer-history:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Consultar histórico comercial
+      operationId: listCommercialOfferHistory
+      tags: [Offer Workflow]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: eventType
+          in: query
+          description: Filtra pelo tipo de mudança ou decisão registrada.
+          schema: { $ref: '#/components/schemas/OfferHistoryEventType' }
+      responses:
+        '200':
+          description: Histórico retornado em ordem decrescente; sem eventos retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferHistoryListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exiba autor, data, revisão e motivo de devolução sem depender apenas de cor.
+      x-backend-notes: Preservar snapshots de envio e devolução; não expor payload técnico do evento.
+
+  /commercial-offer-metrics:
+    get:
+      summary: Consultar métricas comerciais
+      description: Consolida prazo, completude, primeira aceitação, dupla validação e retrabalho.
+      operationId: getCommercialOfferMetrics
+      tags: [Metrics]
+      x-required-scope: staff
+      x-required-permissions: [commercial-offers:metrics]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Início inclusivo do período em UTC.
+          schema: { type: string, format: date-time, example: '2026-07-01T00:00:00Z' }
+        - name: to
+          in: query
+          required: true
+          description: Fim exclusivo do período em UTC.
+          schema: { type: string, format: date-time, example: '2026-08-01T00:00:00Z' }
+        - name: destinationId
+          in: query
+          description: Filtra por referência opaca de destino.
+          schema: { type: string, example: dest-porto-de-galinhas }
+      responses:
+        '200':
+          description: Métricas consolidadas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialOfferMetrics' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Mostre numerador, denominador e período ao lado de cada percentual.
+      x-backend-notes: Calcular dias úteis com o calendário operacional oficial e manter agregados reprocessáveis.
+
+components:
+  securitySchemes:
+    LogToBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT emitido pelo LogTo para o API Resource da LocalizeStay, com escopo staff.
+
+  parameters:
+    Page:
+      name: _page
+      in: query
+      description: Número da página, iniciando em 1.
+      schema: { type: integer, minimum: 1, default: 1, example: 1 }
+    PageSize:
+      name: _size
+      in: query
+      description: Quantidade de itens por página, no máximo 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20, example: 20 }
+    PropertyId:
+      name: propertyId
+      in: path
+      required: true
+      description: Identificador público da propriedade incorporada.
+      schema: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+    PolicyId:
+      name: policyId
+      in: path
+      required: true
+      description: Identificador público da política comercial.
+      schema: { type: string, format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+    AccommodationId:
+      name: accommodationId
+      in: path
+      required: true
+      description: Identificador público da acomodação.
+      schema: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+    RateId:
+      name: rateId
+      in: path
+      required: true
+      description: Identificador público da tarifa comercial.
+      schema: { type: string, format: uuid, example: 7eb68321-f5e7-49f7-9ee6-ef450496012b }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID estável reutilizado em tentativas do mesmo envio.
+      schema: { type: string, format: uuid, example: d6c6f453-d1bc-4ca8-bf0f-2f061207192e }
+
+  responses:
+    BadRequest:
+      description: Requisição malformada ou parâmetro sintaticamente inválido
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/bad-request, title: Requisição inválida, status: 400, detail: O parâmetro _page deve ser maior que zero., instance: /api/v1/commercial-offers, code: BAD_REQUEST, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+    Unauthorized:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/unauthorized, title: Autenticação necessária, status: 401, detail: Apresente um JWT válido emitido pelo LogTo., instance: /api/v1/commercial-offers, code: UNAUTHORIZED, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+    Forbidden:
+      description: Identidade autenticada sem autorização para a operação
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/forbidden, title: Operação não autorizada, status: 403, detail: A identidade não possui a permissão declarada., instance: /api/v1/commercial-offers, code: FORBIDDEN, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+    NotFound:
+      description: Recurso ou referência upstream não encontrado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/property-not-found, title: Propriedade não encontrada, status: 404, detail: A propriedade informada não existe., instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/commercial-offer, code: PROPERTY_NOT_FOUND, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+    Conflict:
+      description: Conflito de versão, período, unicidade ou estado concorrente
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/rate-period-overlap, title: Período tarifário sobreposto, status: 409, detail: Existe tarifa da mesma condição com período sobreposto., instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/accommodations/7332fc6e-71aa-43cd-90b4-d2fd99c97787/rates, code: RATE_PERIOD_OVERLAP, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01, metadata: { conflictingResourceId: 7eb68321-f5e7-49f7-9ee6-ef450496012b } }
+    UnprocessableEntity:
+      description: Requisição válida que viola uma regra de negócio
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/offer-not-ready
+            title: Oferta ainda não está pronta
+            status: 422
+            detail: Existem pendências comerciais que impedem a validação.
+            instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/commercial-offer-validations
+            code: OFFER_NOT_READY
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+            errors:
+              - { field: 'accommodations[0].rates', code: CURRENT_OR_FUTURE_RATE_REQUIRED, message: Informe ao menos um período tarifário atual ou futuro. }
+    TooManyRequests:
+      description: Limite de requisições excedido
+      headers:
+        Retry-After:
+          description: Segundos até nova tentativa.
+          schema: { type: integer, example: 30 }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/rate-limit, title: Muitas requisições, status: 429, detail: Aguarde antes de tentar novamente., instance: /api/v1/commercial-offers, code: RATE_LIMIT_EXCEEDED, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+    InternalServerError:
+      description: Falha interna inesperada sem exposição de detalhes sensíveis
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: https://api.localizestay.com/problems/internal-error, title: Erro interno, status: 500, detail: Ocorreu uma falha inesperada. Tente novamente mais tarde., instance: /api/v1/commercial-offers, code: INTERNAL_ERROR, traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+
+  schemas:
+    CommercialOfferStatus:
+      type: string
+      enum: [draft, readyForValidation, validated, readyForReview, returned, published]
+      description: draft incompleta; readyForValidation completa; validated conferida; readyForReview enviada; returned devolvida; published fora da governança F02.
+      example: readyForValidation
+    ResourceStatus:
+      type: string
+      enum: [active, inactive]
+      description: active disponível para uso; inactive preservado apenas para histórico.
+      example: active
+    AccommodationStatus:
+      type: string
+      enum: [draft, active, inactive]
+      description: draft em edição; active apta quando completa; inactive fora de novas ofertas.
+      example: draft
+    RateStatus:
+      type: string
+      enum: [draft, active, inactive]
+      description: draft incompleta; active aplicável no período; inactive preservada para histórico.
+      example: active
+    PolicyType:
+      type: string
+      enum: [flexible, nonRefundable]
+      description: flexible permite cancelamento gratuito até sete dias antes; nonRefundable não reembolsa cancelamento voluntário, ressalvadas hipóteses legais e exceções aprovadas.
+      example: flexible
+    MealPlan:
+      type: string
+      enum: [roomOnly, breakfast, halfBoard, fullBoard]
+      description: roomOnly sem alimentação; breakfast café da manhã; halfBoard meia pensão; fullBoard pensão completa.
+      example: breakfast
+    BedType:
+      type: string
+      enum: [single, double, queen, king, bunk, sofaBed]
+      description: Tipo físico de cama oferecida na acomodação.
+      example: queen
+    StructuralFeature:
+      type: string
+      enum: [privateBathroom, airConditioning, balcony, kitchenette, livingArea, accessible]
+      description: Característica estrutural; conteúdo editorial e comodidades pertencem à Curadoria.
+      example: balcony
+    PendingIssueSeverity:
+      type: string
+      enum: [blocking, warning]
+      description: blocking impede validação ou envio; warning apenas orienta o operador.
+      example: blocking
+    ChildAgeRangeSource:
+      type: string
+      enum: [propertyDefault, accommodationOverride, none]
+      description: Origem da faixa etária infantil efetiva.
+      example: propertyDefault
+    OfferHistoryEventType:
+      type: string
+      enum: [created, updated, validationCreated, validationInvalidated, submitted, returned, deactivated, deleted]
+      description: Tipo de evento funcional preservado no histórico da oferta.
+      example: returned
+
+    Pagination:
+      type: object
+      required: [page, size, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1, example: 1 }
+        size: { type: integer, minimum: 1, maximum: 100, example: 20 }
+        total: { type: integer, minimum: 0, example: 8 }
+        totalPages: { type: integer, minimum: 0, example: 1 }
+
+    StaffActor:
+      type: object
+      required: [id, displayName]
+      properties:
+        id: { type: string, description: Identificador opaco da identidade LogTo., example: usr_01J2M8HGK7D23R }
+        displayName: { type: string, example: Ana Souza }
+
+    ChildAgeRange:
+      type: object
+      required: [minAgeInclusive, maxAgeInclusive]
+      properties:
+        minAgeInclusive: { type: integer, minimum: 0, maximum: 17, example: 0 }
+        maxAgeInclusive: { type: integer, minimum: 0, maximum: 17, example: 11 }
+
+    BedConfigurationItem:
+      type: object
+      required: [type, quantity]
+      properties:
+        type: { $ref: '#/components/schemas/BedType' }
+        quantity: { type: integer, minimum: 1, maximum: 20, example: 1 }
+
+    PendingIssue:
+      type: object
+      required: [code, message, severity, resourceType]
+      properties:
+        code: { type: string, example: RATE_POLICY_REQUIRED }
+        message: { type: string, example: Selecione uma política para a tarifa Verão 2027. }
+        severity: { $ref: '#/components/schemas/PendingIssueSeverity' }
+        resourceType: { type: string, enum: [offer, policy, accommodation, rate], example: rate }
+        resourceId: { type: [string, 'null'], format: uuid, example: 7eb68321-f5e7-49f7-9ee6-ef450496012b }
+        field: { type: [string, 'null'], example: policyId }
+
+    CommercialOfferSummary:
+      type: object
+      required: [propertyId, propertyName, status, revision, completenessPercentage, blockingIssueCount, accommodationCount, completeAccommodationCount, everSubmitted, authoredBy, createdAt, updatedAt]
+      properties:
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        propertyName: { type: string, example: Pousada Mar do Sol }
+        destinationId: { type: [string, 'null'], example: dest-porto-de-galinhas }
+        status: { $ref: '#/components/schemas/CommercialOfferStatus' }
+        revision: { type: integer, minimum: 1, example: 7 }
+        completenessPercentage: { type: integer, minimum: 0, maximum: 100, example: 86 }
+        blockingIssueCount: { type: integer, minimum: 0, example: 1 }
+        accommodationCount: { type: integer, minimum: 0, example: 2 }
+        completeAccommodationCount: { type: integer, minimum: 0, example: 1 }
+        everSubmitted: { type: boolean, example: false }
+        authoredBy: { $ref: '#/components/schemas/StaffActor' }
+        completeInformationReceivedAt: { type: [string, 'null'], format: date-time, example: '2026-07-20T14:00:00Z' }
+        targetSubmissionAt: { type: [string, 'null'], format: date-time, example: '2026-07-22T21:00:00Z' }
+        lastSubmittedAt: { type: [string, 'null'], format: date-time, example: null }
+        createdAt: { type: string, format: date-time, example: '2026-07-18T13:30:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-22T15:20:00Z' }
+
+    CommercialOffer:
+      allOf:
+        - $ref: '#/components/schemas/CommercialOfferSummary'
+        - type: object
+          required: [defaultPolicyId, policies, accommodations, pendingIssues]
+          properties:
+            defaultPolicyId: { type: [string, 'null'], format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+            policies:
+              type: array
+              items: { $ref: '#/components/schemas/CommercialPolicy' }
+              example: []
+            accommodations:
+              type: array
+              items: { $ref: '#/components/schemas/Accommodation' }
+              example: []
+            pendingIssues:
+              type: array
+              items: { $ref: '#/components/schemas/PendingIssue' }
+              example: []
+            currentValidation:
+              oneOf:
+                - $ref: '#/components/schemas/OfferValidation'
+                - type: 'null'
+              example: null
+            latestReturn:
+              oneOf:
+                - $ref: '#/components/schemas/OfferReturn'
+                - type: 'null'
+              example: null
+
+    CommercialOfferListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/CommercialOfferSummary' }
+          example: []
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    CommercialPolicy:
+      type: object
+      required: [id, propertyId, type, title, rulesSummary, ruleSetVersion, isDefault, status, usageCount, everSubmitted, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        type: { $ref: '#/components/schemas/PolicyType' }
+        title: { type: string, example: Flexível }
+        rulesSummary: { type: string, example: Cancelamento gratuito até sete dias antes do check-in. }
+        ruleSetVersion: { type: string, example: BR-2026-01 }
+        isDefault: { type: boolean, example: true }
+        status: { $ref: '#/components/schemas/ResourceStatus' }
+        usageCount: { type: integer, minimum: 0, example: 2 }
+        everSubmitted: { type: boolean, example: false }
+        createdAt: { type: string, format: date-time, example: '2026-07-18T14:00:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-18T14:00:00Z' }
+
+    CommercialPolicyListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/CommercialPolicy' }
+          example: []
+
+    CreateCommercialPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [type, setAsDefault]
+      properties:
+        type: { $ref: '#/components/schemas/PolicyType' }
+        setAsDefault: { type: boolean, description: Define esta política como padrão após o cadastro., example: true }
+
+    SetDefaultCommercialPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [policyId, applyToExistingAccommodations, expectedRevision]
+      properties:
+        policyId: { type: string, format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+        applyToExistingAccommodations: { type: boolean, example: false }
+        expectedRevision: { type: integer, minimum: 1, example: 7 }
+
+    SetDefaultCommercialPolicyResponse:
+      type: object
+      required: [defaultPolicy, updatedAccommodationCount, revision]
+      properties:
+        defaultPolicy: { $ref: '#/components/schemas/CommercialPolicy' }
+        updatedAccommodationCount: { type: integer, minimum: 0, example: 0 }
+        revision: { type: integer, minimum: 1, example: 8 }
+
+    UpdateCommercialPolicyRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 2
+      required: [expectedRevision]
+      properties:
+        status: { $ref: '#/components/schemas/ResourceStatus' }
+        replacementPolicyId: { type: [string, 'null'], format: uuid, description: Obrigatório ao desativar política em uso., example: 2a513e60-d8ad-4b6d-b972-fd560ecdc718 }
+        deactivationReason: { type: [string, 'null'], minLength: 3, maxLength: 500, example: Política substituída pela versão comercial vigente. }
+        expectedRevision: { type: integer, minimum: 1, example: 8 }
+
+    Accommodation:
+      type: object
+      required: [id, propertyId, commercialName, bedConfiguration, structuralFeatures, childAgeRangeSource, policyId, status, completenessPercentage, pendingIssues, rateCount, activeRateCount, everSubmitted, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        commercialName: { type: string, example: Suíte Jardim }
+        category: { type: [string, 'null'], example: Suíte }
+        bedConfiguration:
+          type: array
+          items: { $ref: '#/components/schemas/BedConfigurationItem' }
+          example: [{ type: queen, quantity: 1 }, { type: single, quantity: 1 }]
+        structuralFeatures:
+          type: array
+          items: { $ref: '#/components/schemas/StructuralFeature' }
+          example: [privateBathroom, airConditioning, balcony]
+        totalCapacity: { type: [integer, 'null'], minimum: 1, maximum: 30, example: 3 }
+        maxAdults: { type: [integer, 'null'], minimum: 1, maximum: 30, example: 2 }
+        maxChildren: { type: [integer, 'null'], minimum: 0, maximum: 20, example: 1 }
+        childAgeRange:
+          oneOf:
+            - $ref: '#/components/schemas/ChildAgeRange'
+            - type: 'null'
+          example: { minAgeInclusive: 0, maxAgeInclusive: 11 }
+        childAgeRangeSource: { $ref: '#/components/schemas/ChildAgeRangeSource' }
+        policyId: { type: [string, 'null'], format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+        status: { $ref: '#/components/schemas/AccommodationStatus' }
+        deactivationReason: { type: [string, 'null'], example: Categoria não será ofertada no piloto. }
+        completenessPercentage: { type: integer, minimum: 0, maximum: 100, example: 100 }
+        pendingIssues:
+          type: array
+          items: { $ref: '#/components/schemas/PendingIssue' }
+          example: []
+        rateCount: { type: integer, minimum: 0, example: 2 }
+        activeRateCount: { type: integer, minimum: 0, example: 2 }
+        everSubmitted: { type: boolean, example: false }
+        createdAt: { type: string, format: date-time, example: '2026-07-19T12:00:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-22T15:20:00Z' }
+
+    AccommodationListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Accommodation' }
+          example: []
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    AccommodationInput:
+      type: object
+      properties:
+        commercialName: { type: string, minLength: 2, maxLength: 120, example: Suíte Jardim }
+        category: { type: [string, 'null'], maxLength: 80, example: Suíte }
+        bedConfiguration:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/BedConfigurationItem' }
+          example: [{ type: queen, quantity: 1 }, { type: single, quantity: 1 }]
+        structuralFeatures:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/StructuralFeature' }
+          example: [privateBathroom, airConditioning, balcony]
+        totalCapacity: { type: [integer, 'null'], minimum: 1, maximum: 30, example: 3 }
+        maxAdults: { type: [integer, 'null'], minimum: 1, maximum: 30, example: 2 }
+        maxChildren: { type: [integer, 'null'], minimum: 0, maximum: 20, example: 1 }
+        childAgeRange:
+          oneOf:
+            - $ref: '#/components/schemas/ChildAgeRange'
+            - type: 'null'
+          description: Omissão mantém herança; null remove override; objeto define override.
+          example: { minAgeInclusive: 0, maxAgeInclusive: 11 }
+        policyId: { type: [string, 'null'], format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+
+    CreateAccommodationRequest:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/AccommodationInput'
+        - type: object
+          required: [commercialName]
+
+    UpdateAccommodationRequest:
+      unevaluatedProperties: false
+      minProperties: 2
+      allOf:
+        - $ref: '#/components/schemas/AccommodationInput'
+        - type: object
+          required: [expectedRevision]
+          properties:
+            status: { $ref: '#/components/schemas/AccommodationStatus' }
+            deactivationReason: { type: [string, 'null'], minLength: 3, maxLength: 500, example: Categoria não será ofertada no piloto. }
+            expectedRevision: { type: integer, minimum: 1, example: 8 }
+
+    CommercialRate:
+      type: object
+      required: [id, accommodationId, name, conditionCode, currency, mandatoryFeesIncluded, status, completenessPercentage, pendingIssues, everSubmitted, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 7eb68321-f5e7-49f7-9ee6-ef450496012b }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        name: { type: string, example: Verão 2027 }
+        conditionCode: { type: string, example: standard-breakfast }
+        basePriceCents: { type: [integer, 'null'], minimum: 0, example: 48900 }
+        includedGuests: { type: [integer, 'null'], minimum: 1, maximum: 30, example: 2 }
+        additionalAdultPriceCents: { type: [integer, 'null'], minimum: 0, example: 12000 }
+        additionalChildPriceCents: { type: [integer, 'null'], minimum: 0, example: 6000 }
+        validFrom: { type: [string, 'null'], format: date, example: '2026-12-01' }
+        validTo: { type: [string, 'null'], format: date, example: '2027-02-28' }
+        minimumNights: { type: [integer, 'null'], minimum: 1, maximum: 365, example: 2 }
+        policyId: { type: [string, 'null'], format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+        mealPlan:
+          oneOf:
+            - $ref: '#/components/schemas/MealPlan'
+            - type: 'null'
+          example: breakfast
+        currency: { type: string, const: BRL, example: BRL }
+        mandatoryFeesIncluded: { type: boolean, const: true, example: true }
+        status: { $ref: '#/components/schemas/RateStatus' }
+        deactivationReason: { type: [string, 'null'], example: Período comercial encerrado. }
+        completenessPercentage: { type: integer, minimum: 0, maximum: 100, example: 100 }
+        pendingIssues:
+          type: array
+          items: { $ref: '#/components/schemas/PendingIssue' }
+          example: []
+        everSubmitted: { type: boolean, example: false }
+        createdAt: { type: string, format: date-time, example: '2026-07-20T11:00:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-22T15:20:00Z' }
+
+    CommercialRateListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/CommercialRate' }
+          example: []
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    CommercialRateInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120, example: Verão 2027 }
+        conditionCode: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 60, example: standard-breakfast }
+        basePriceCents: { type: [integer, 'null'], minimum: 0, example: 48900 }
+        includedGuests: { type: [integer, 'null'], minimum: 1, maximum: 30, example: 2 }
+        additionalAdultPriceCents: { type: [integer, 'null'], minimum: 0, example: 12000 }
+        additionalChildPriceCents: { type: [integer, 'null'], minimum: 0, example: 6000 }
+        validFrom: { type: [string, 'null'], format: date, example: '2026-12-01' }
+        validTo: { type: [string, 'null'], format: date, example: '2027-02-28' }
+        minimumNights: { type: [integer, 'null'], minimum: 1, maximum: 365, example: 2 }
+        policyId: { type: [string, 'null'], format: uuid, example: e96dab42-0170-4b98-a937-cdc25ad2f68d }
+        mealPlan:
+          oneOf:
+            - $ref: '#/components/schemas/MealPlan'
+            - type: 'null'
+          example: breakfast
+
+    CreateCommercialRateRequest:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/CommercialRateInput'
+        - type: object
+          required: [name, conditionCode]
+
+    UpdateCommercialRateRequest:
+      unevaluatedProperties: false
+      minProperties: 2
+      allOf:
+        - $ref: '#/components/schemas/CommercialRateInput'
+        - type: object
+          required: [expectedRevision]
+          properties:
+            status: { $ref: '#/components/schemas/RateStatus' }
+            deactivationReason: { type: [string, 'null'], minLength: 3, maxLength: 500, example: Período comercial encerrado. }
+            expectedRevision: { type: integer, minimum: 1, example: 8 }
+
+    CreateOfferValidationRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision]
+      properties:
+        expectedRevision: { type: integer, minimum: 1, description: Revisão exata conferida pelo segundo operador., example: 8 }
+        comment: { type: [string, 'null'], maxLength: 1000, example: 'Preços, ocupação, política e períodos conferidos.' }
+
+    OfferValidation:
+      type: object
+      required: [id, propertyId, revision, status, validatedBy, validatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 89386911-d42f-43f5-bd59-2fd6be2b9488 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        revision: { type: integer, minimum: 1, example: 8 }
+        status: { type: string, enum: [valid, invalidated], description: valid enquanto a revisão não mudar; invalidated após qualquer alteração comercial., example: valid }
+        validatedBy: { $ref: '#/components/schemas/StaffActor' }
+        validatedAt: { type: string, format: date-time, example: '2026-07-22T16:10:00Z' }
+        invalidatedAt: { type: [string, 'null'], format: date-time, example: null }
+        invalidationReason: { type: [string, 'null'], example: null }
+        comment: { type: [string, 'null'], example: 'Preços, ocupação, política e períodos conferidos.' }
+
+    CreateOfferSubmissionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, validationId]
+      properties:
+        expectedRevision: { type: integer, minimum: 1, example: 8 }
+        validationId: { type: string, format: uuid, example: 89386911-d42f-43f5-bd59-2fd6be2b9488 }
+
+    OfferSubmission:
+      type: object
+      required: [id, propertyId, revision, validationId, status, eventName, submittedBy, submittedAt]
+      properties:
+        id: { type: string, format: uuid, example: 20d96ead-fcd4-4337-9680-ccb46ea91042 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        revision: { type: integer, minimum: 1, example: 8 }
+        validationId: { type: string, format: uuid, example: 89386911-d42f-43f5-bd59-2fd6be2b9488 }
+        status: { type: string, enum: [accepted], description: accepted significa que o envio e a outbox foram persistidos., example: accepted }
+        eventName: { type: string, const: oferta-inventario.oferta-estruturada, example: oferta-inventario.oferta-estruturada }
+        submittedBy: { $ref: '#/components/schemas/StaffActor' }
+        submittedAt: { type: string, format: date-time, example: '2026-07-22T16:20:00Z' }
+
+    OfferReturn:
+      type: object
+      required: [id, submissionId, reasonCode, reason, returnedByDomain, returnedAt]
+      properties:
+        id: { type: string, format: uuid, example: 02bd32ec-d2c7-4b7f-8721-3748e11f8054 }
+        submissionId: { type: string, format: uuid, example: 20d96ead-fcd4-4337-9680-ccb46ea91042 }
+        reasonCode: { type: string, example: COMMERCIAL_DATA_INCONSISTENT }
+        reason: { type: string, example: Confirmar o acréscimo por criança na tarifa Verão 2027. }
+        returnedByDomain: { type: string, example: curadoria-qualidade }
+        returnedAt: { type: string, format: date-time, example: '2026-07-23T12:00:00Z' }
+
+    OfferHistoryEntry:
+      type: object
+      required: [id, eventType, revision, summary, actorType, occurredAt]
+      properties:
+        id: { type: string, format: uuid, example: a62695f2-ef05-48c0-b494-b7941319cf7d }
+        eventType: { $ref: '#/components/schemas/OfferHistoryEventType' }
+        revision: { type: integer, minimum: 1, example: 8 }
+        summary: { type: string, example: Oferta devolvida para correção do acréscimo infantil. }
+        actorType: { type: string, enum: [staff, system, downstreamDomain], description: Origem humana ou sistêmica do evento., example: downstreamDomain }
+        actor:
+          oneOf:
+            - $ref: '#/components/schemas/StaffActor'
+            - type: 'null'
+          example: null
+        reason: { type: [string, 'null'], example: Confirmar o acréscimo por criança na tarifa Verão 2027. }
+        occurredAt: { type: string, format: date-time, example: '2026-07-23T12:00:00Z' }
+
+    OfferHistoryListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OfferHistoryEntry' }
+          example: []
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    CommercialOfferMetrics:
+      type: object
+      required: [from, to, totalOffers, completeProperties, firstReviewAcceptanceRate, submissionWithinTwoBusinessDaysRate, dualValidationRate, requestsProcessedWithinFourBusinessHoursRate, returnedOfferCount, averageReworkCount]
+      properties:
+        from: { type: string, format: date-time, example: '2026-07-01T00:00:00Z' }
+        to: { type: string, format: date-time, example: '2026-08-01T00:00:00Z' }
+        totalOffers: { type: integer, minimum: 0, example: 10 }
+        completeProperties: { type: integer, minimum: 0, example: 8 }
+        firstReviewAcceptanceRate: { type: number, format: double, minimum: 0, maximum: 1, example: 0.9 }
+        submissionWithinTwoBusinessDaysRate: { type: number, format: double, minimum: 0, maximum: 1, example: 1.0 }
+        dualValidationRate: { type: number, format: double, minimum: 0, maximum: 1, example: 1.0 }
+        requestsProcessedWithinFourBusinessHoursRate: { type: number, format: double, minimum: 0, maximum: 1, example: 1.0 }
+        returnedOfferCount: { type: integer, minimum: 0, example: 1 }
+        averageReworkCount: { type: number, format: double, minimum: 0, example: 0.2 }
+
+    ValidationError:
+      type: object
+      required: [code, message]
+      properties:
+        field: { type: [string, 'null'], example: basePriceCents }
+        code: { type: string, example: BASE_PRICE_REQUIRED }
+        message: { type: string, example: Informe o valor-base da diária. }
+
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details com extensões estáveis da LocalizeStay.
+      required: [type, title, status, code, traceId]
+      properties:
+        type: { type: string, format: uri-reference, example: https://api.localizestay.com/problems/offer-not-ready }
+        title: { type: string, example: Oferta ainda não está pronta }
+        status: { type: integer, minimum: 400, maximum: 599, example: 422 }
+        detail: { type: [string, 'null'], example: Existem pendências comerciais que impedem a validação. }
+        instance: { type: [string, 'null'], format: uri-reference, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/commercial-offer-validations }
+        code: { type: string, example: OFFER_NOT_READY }
+        traceId: { type: string, example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/ValidationError' }
+          example: []
+        metadata:
+          type: object
+          additionalProperties: true
+          example: { conflictingResourceId: 7eb68321-f5e7-49f7-9ee6-ef450496012b }
