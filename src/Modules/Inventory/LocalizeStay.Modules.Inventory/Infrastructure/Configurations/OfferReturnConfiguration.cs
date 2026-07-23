@@ -21,6 +21,10 @@ internal sealed class OfferReturnConfiguration : IEntityTypeConfiguration<OfferR
             .HasColumnName("submission_id")
             .IsRequired();
 
+        builder.Property(r => r.EventId)
+            .HasColumnName("event_id")
+            .IsRequired();
+
         builder.Property(r => r.Revision)
             .HasColumnName("revision")
             .IsRequired();

@@ -260,6 +260,7 @@ public sealed class CommercialOfferTests
         var offerReturn = offer.RecordReturn(
             returnId,
             submission.Id,
+            Guid.NewGuid(),
             "incomplete_data",
             "Missing rate details for high season.",
             Author2,
@@ -277,6 +278,7 @@ public sealed class CommercialOfferTests
         var offer = CommercialOffer.Create(Guid.NewGuid(), Author1, DateTimeOffset.UtcNow);
 
         var act = () => offer.RecordReturn(
+            Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
             "incomplete_data",
@@ -298,6 +300,7 @@ public sealed class CommercialOfferTests
         offer.Submit(Guid.NewGuid(), "{}", Author1, offer.Revision, now);
 
         var act = () => offer.RecordReturn(
+            Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
             "incomplete_data",
@@ -367,7 +370,7 @@ public sealed class CommercialOfferTests
         offer.RecalculateCompleteness(1, 1, 1, false, now);
         offer.Validate(Guid.NewGuid(), Author2, offer.Revision, now);
         var submission = offer.Submit(Guid.NewGuid(), "{}", Author1, offer.Revision, now);
-        offer.RecordReturn(Guid.NewGuid(), submission.Id, "incomplete_data", "Fix rates.", Author2, now);
+        offer.RecordReturn(Guid.NewGuid(), submission.Id, Guid.NewGuid(), "incomplete_data", "Fix rates.", Author2, now);
         offer.State.Should().Be(OfferState.Returned);
 
         offer.IncrementRevisionMutate(Author1, now.AddMinutes(1), null, () => { });
@@ -461,7 +464,7 @@ public sealed class CommercialOfferTests
         offer.Validate(Guid.NewGuid(), Author2, offer.Revision, now);
         var submission = offer.Submit(Guid.NewGuid(), "{}", Author1, offer.Revision, now);
 
-        var act = () => offer.RecordReturn(Guid.NewGuid(), submission.Id, "   ", "Fix rates.", Author2, now);
+        var act = () => offer.RecordReturn(Guid.NewGuid(), submission.Id, Guid.NewGuid(), "   ", "Fix rates.", Author2, now);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -475,7 +478,7 @@ public sealed class CommercialOfferTests
         offer.Validate(Guid.NewGuid(), Author2, offer.Revision, now);
         var submission = offer.Submit(Guid.NewGuid(), "{}", Author1, offer.Revision, now);
 
-        var act = () => offer.RecordReturn(Guid.NewGuid(), submission.Id, "incomplete_data", "   ", Author2, now);
+        var act = () => offer.RecordReturn(Guid.NewGuid(), submission.Id, Guid.NewGuid(), "incomplete_data", "   ", Author2, now);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -489,7 +492,7 @@ public sealed class CommercialOfferTests
         offer.Validate(Guid.NewGuid(), Author2, offer.Revision, now);
         var submission = offer.Submit(Guid.NewGuid(), "{}", Author1, offer.Revision, now);
 
-        var act = () => offer.RecordReturn(Guid.NewGuid(), submission.Id, "incomplete_data", "Fix rates.", "   ", now);
+        var act = () => offer.RecordReturn(Guid.NewGuid(), submission.Id, Guid.NewGuid(), "incomplete_data", "Fix rates.", "   ", now);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -514,7 +517,7 @@ public sealed class CommercialOfferTests
         offer.RecalculateCompleteness(1, 1, 1, false, now);
         offer.Validate(Guid.NewGuid(), Author2, offer.Revision, now);
         var submission = offer.Submit(Guid.NewGuid(), "{}", Author1, offer.Revision, now);
-        offer.RecordReturn(Guid.NewGuid(), submission.Id, "incomplete_data", "Fix rates.", Author2, now);
+        offer.RecordReturn(Guid.NewGuid(), submission.Id, Guid.NewGuid(), "incomplete_data", "Fix rates.", Author2, now);
 
         offer.Returns.Should().HaveCount(1);
     }
@@ -732,6 +735,7 @@ public sealed class CommercialOfferTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             4,
+            Guid.NewGuid(),
             "incomplete_data",
             "Missing rate details.",
             "curation-user",

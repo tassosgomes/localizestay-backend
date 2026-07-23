@@ -32,6 +32,9 @@ public sealed partial class BusinessAuditEntry
         "curationReturnId",
         "communicationChannel",
         "reasonCode",
+        "eventId",
+        "submissionId",
+        "validationId",
     };
 
     private const int MaxSummaryLength = 500;

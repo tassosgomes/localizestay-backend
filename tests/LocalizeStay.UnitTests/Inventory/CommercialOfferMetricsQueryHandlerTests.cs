@@ -177,7 +177,7 @@ public sealed class CommercialOfferMetricsQueryHandlerTests
 
         var offer2 = CommercialOffer.Create(prop2.Id, "staff-002", created);
         var sub2 = OfferSubmission.Create(Guid.NewGuid(), prop2.Id, 1, "{\"v\":1}", "staff-004", created.AddHours(2));
-        var return1 = OfferReturn.Create(Guid.NewGuid(), prop2.Id, sub2.Id, 1, "MISSING_DATA", "Missing data.", "curation-bot", created.AddHours(4));
+        var return1 = OfferReturn.Create(Guid.NewGuid(), prop2.Id, sub2.Id, 1, Guid.NewGuid(), "MISSING_DATA", "Missing data.", "curation-bot", created.AddHours(4));
         dbContext.CommercialOffers.Add(offer2);
         dbContext.OfferSubmissions.Add(sub2);
         dbContext.OfferReturns.Add(return1);
@@ -211,8 +211,8 @@ public sealed class CommercialOfferMetricsQueryHandlerTests
         dbContext.CommercialOffers.Add(offer1);
         dbContext.OfferSubmissions.Add(sub1);
         dbContext.OfferReturns.AddRange(
-            OfferReturn.Create(Guid.NewGuid(), prop1.Id, sub1.Id, 1, "MISSING_DATA", "Missing.", "curation", created.AddHours(4)),
-            OfferReturn.Create(Guid.NewGuid(), prop1.Id, sub1.Id, 1, "INCONSISTENT", "Inconsistent.", "curation", created.AddHours(5)));
+            OfferReturn.Create(Guid.NewGuid(), prop1.Id, sub1.Id, 1, Guid.NewGuid(), "MISSING_DATA", "Missing.", "curation", created.AddHours(4)),
+            OfferReturn.Create(Guid.NewGuid(), prop1.Id, sub1.Id, 1, Guid.NewGuid(), "INCONSISTENT", "Inconsistent.", "curation", created.AddHours(5)));
 
         dbContext.CommercialOffers.Add(CommercialOffer.Create(prop2.Id, "staff-002", created));
 
@@ -253,7 +253,7 @@ public sealed class CommercialOfferMetricsQueryHandlerTests
         response.TotalOffers.Should().Be(1);
     }
 
-    private static IBusinessCalendar CreateCalendar(string holiday = null, string now = "2026-07-20T15:00:00Z")
+    private static IBusinessCalendar CreateCalendar(string? holiday = null, string now = "2026-07-20T15:00:00Z")
     {
         var options = new LocalizeStay.Modules.Inventory.Infrastructure.Timing.BusinessCalendarOptions
         {

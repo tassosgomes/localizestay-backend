@@ -169,4 +169,17 @@ internal static class CommercialOfferMapper
     }
 
     internal static StaffActorResponse ToStaffActor(string id, string displayName) => new(id, displayName);
+
+    internal static CommercialOfferResponse ToResponse(CommercialOffer offer) => new(
+        offer.PropertyId,
+        offer.Revision,
+        offer.RevisionAuthor,
+        ContractValue(offer.State),
+        offer.AccommodationCount,
+        offer.BlockingIssueCount,
+        offer.EverSubmitted,
+        offer.CompleteInformationReceivedAt,
+        offer.TargetSubmissionAt,
+        offer.CreatedAt,
+        offer.UpdatedAt);
 }

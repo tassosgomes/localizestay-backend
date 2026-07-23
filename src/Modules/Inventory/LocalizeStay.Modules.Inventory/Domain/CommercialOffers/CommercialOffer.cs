@@ -122,6 +122,8 @@ internal sealed class CommercialOffer
         ArgumentException.ThrowIfNullOrWhiteSpace(snapshotJson);
         ArgumentException.ThrowIfNullOrWhiteSpace(submittedBy);
 
+        ExpectNotPublished();
+
         if (Revision != expectedRevision)
         {
             throw new BusinessRuleViolationException(
@@ -158,9 +160,13 @@ internal sealed class CommercialOffer
         return submission;
     }
 
+    internal bool HasEventReturn(Guid eventId) =>
+        _returns.Any(r => r.EventId == eventId);
+
     internal OfferReturn RecordReturn(
         Guid returnId,
         Guid submissionId,
+        Guid eventId,
         string reasonCode,
         string reason,
         string returnedBy,
@@ -169,6 +175,13 @@ internal sealed class CommercialOffer
         ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         ArgumentException.ThrowIfNullOrWhiteSpace(returnedBy);
+
+        if (State == OfferState.Published)
+        {
+            throw new BusinessRuleViolationException(
+                "Published offers cannot receive returns through F02. Changes require F04 governance.",
+                "PUBLISHED_OFFER_CHANGE_REQUIRES_F04");
+        }
 
         if (State != OfferState.Submitted)
         {
@@ -189,6 +202,7 @@ internal sealed class CommercialOffer
             PropertyId,
             submissionId,
             Revision,
+            eventId,
             reasonCode,
             reason,
             returnedBy,

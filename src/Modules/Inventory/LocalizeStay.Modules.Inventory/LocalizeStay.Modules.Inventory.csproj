@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LocalizeStay.Modules.Inventory.Contracts\LocalizeStay.Modules.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Curation\LocalizeStay.Modules.Curation.Contracts\LocalizeStay.Modules.Curation.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\LocalizeStay.SharedKernel\LocalizeStay.SharedKernel.csproj" />
   </ItemGroup>
 
@@ -25,6 +26,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="LocalizeStay.UnitTests" />
     <InternalsVisibleTo Include="LocalizeStay.IntegrationTests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 
 </Project>

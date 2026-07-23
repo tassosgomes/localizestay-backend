@@ -22,4 +22,10 @@ internal static class InventoryTelemetry
     internal static readonly Counter<long> CommunicationSla = _meter.CreateCounter<long>("inventory.communication.sla", unit: "{communication}");
     internal static readonly Counter<long> OutboxFailures = _meter.CreateCounter<long>("inventory.outbox.failures", unit: "{failure}");
     internal static readonly Histogram<double> SubmissionDuration = _meter.CreateHistogram<double>("inventory.onboarding.submission.duration", unit: "s");
+
+    internal static readonly Counter<long> OfferValidation = _meter.CreateCounter<long>("inventory.commercial_offer.validation", unit: "{validation}");
+    internal static readonly Counter<long> OfferSubmission = _meter.CreateCounter<long>("inventory.commercial_offer.submission", unit: "{submission}");
+    internal static readonly Counter<long> OfferOutboxFailure = _meter.CreateCounter<long>("inventory.commercial_offer.outbox_failure", unit: "{failure}");
+    internal static readonly Histogram<double> OfferSubmissionDuration = _meter.CreateHistogram<double>("inventory.commercial_offer.submission_duration", unit: "s");
+    internal static readonly Counter<long> OfferReturned = _meter.CreateCounter<long>("inventory.commercial_offer.returned", unit: "{return}");
 }
