@@ -39,6 +39,41 @@ Sugestão de melhoria no:
 
 ---
 
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 4.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Lógica incorreta
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task (requisito explícito "atualização atômica opcional das acomodações")
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `SetDefaultCommercialPolicyCommandHandler` executa `ExecuteSqlRawAsync` para atualizar acomodações antes de `SaveChangesAsync`. O SQL roda fora da transação do EF, portanto se `SaveChangesAsync` falhar, as acomodações são alteradas mas a política padrão não — estado inconsistente que viola o requisito de atomicidade da subtarefa 4.3. Impacto prático atual é baixo (tabela `accommodations` ainda não existe, Task 7.0), mas a abordagem precisará ser revista quando a entidade for implementada.
+
+2. Categoria Técnica: Overengineering
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O mapeamento `ToResponse` (conversão de enum PascalCase → camelCase) é duplicado em `CreateCommercialPolicyCommandHandler`, `UpdateCommercialPolicyCommandHandler` e `DeleteCommercialPolicyCommandHandler`. Três cópias da mesma lógica.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum bloqueante)
+Categoria Técnica mais frequente: Lógica incorreta / Overengineering (1 de cada)
+Origem mais frequente: Task / Limitação do modelo (1 de cada)
+Indício de fragilidade estrutural? Não — 35 testes passam, 274 unit tests passam, 55 architecture tests passam, build 0 erros 0 warnings, todos os tipos `internal`, CQRS nativo, FluentValidation em 4 commands, auditoria e invalidação corretas, 4 handlers implementados, EF config com JSONB e índices.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar que atualizações entre tabelas do agregado (política → acomodações) devem ser atômicas via EF change tracker ou transação explícita, não raw SQL.
+- Template de Task: N/A
+- Skill: `dotnet-architecture` pode reforçar que `ExecuteSqlRawAsync` não participa de `SaveChangesAsync` e requer transação explícita quando atomicidade é exigida.
+
+---
+
 ## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 2.0
 
 Modelo utilizado:

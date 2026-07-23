@@ -1,4 +1,5 @@
 using FluentValidation;
+using LocalizeStay.Modules.Inventory.Application.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Application.Partners;
 using LocalizeStay.Modules.Inventory.Application.PropertyOnboardings;
 
@@ -260,6 +261,53 @@ internal sealed class ClosePropertyOnboardingCommandValidator : AbstractValidato
         RuleFor(command => command.OnboardingId).NotEmpty();
         RuleFor(command => command.ReasonCode).Must(value => new[] { "partnerWithdrawal", "eligibilityFailure", "noResponse", "duplicateProperty", "commercialDecision", "other" }.Contains(value, StringComparer.OrdinalIgnoreCase));
         RuleFor(command => command.Reason).NotEmpty().Length(10, 1000);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateCommercialPolicyCommandValidator : AbstractValidator<CreateCommercialPolicyCommand>
+{
+    public CreateCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyType)
+            .Must(value => new[] { "flexible", "nonRefundable" }.Contains(value, StringComparer.OrdinalIgnoreCase))
+            .WithErrorCode("INVALID_POLICY_TYPE");
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class SetDefaultCommercialPolicyCommandValidator : AbstractValidator<SetDefaultCommercialPolicyCommand>
+{
+    public SetDefaultCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class UpdateCommercialPolicyCommandValidator : AbstractValidator<UpdateCommercialPolicyCommand>
+{
+    public UpdateCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyId).NotEmpty();
+        RuleFor(command => command.ReplacementPolicyId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class DeleteCommercialPolicyCommandValidator : AbstractValidator<DeleteCommercialPolicyCommand>
+{
+    public DeleteCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
     }
 }

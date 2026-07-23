@@ -1,3 +1,4 @@
+using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Domain.IncorporatedProperties;
 using LocalizeStay.Modules.Inventory.Domain.Partners;
 using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
@@ -25,6 +26,10 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
     public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
 
     public DbSet<IncorporatedProperty> IncorporatedProperties => Set<IncorporatedProperty>();
+
+    public DbSet<CommercialOffer> CommercialOffers => Set<CommercialOffer>();
+
+    public DbSet<CommercialPolicy> CommercialPolicies => Set<CommercialPolicy>();
 
     /// <summary>
     /// Append-only business audit rows owned by this schema (ADR-003).

@@ -27,6 +27,12 @@ internal enum PendingIssueType
     PublishedOfferNotModifiable,
 }
 
+internal enum PolicyStatus
+{
+    Active,
+    Inactive,
+}
+
 internal enum ChildAgeRangeSource
 {
     None,

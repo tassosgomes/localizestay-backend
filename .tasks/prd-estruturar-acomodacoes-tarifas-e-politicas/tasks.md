@@ -52,7 +52,7 @@ Fecha telemetria, documentação e a matriz completa de contrato, persistência,
 - [x] [1.0 Sincronizar contrato, catálogo jurídico, configuração e permissões](1_task.md)
 - [x] [2.0 Materializar a propriedade incorporada a partir da F01](2_task.md)
 - [x] [3.0 Implementar o agregado CommercialOffer, revisão e completude](3_task.md)
-- [ ] [4.0 Implementar políticas comerciais reutilizáveis](4_task.md)
+- [x] [4.0 Implementar políticas comerciais reutilizáveis](4_task.md)
 - [ ] [5.0 Implementar acomodações, ocupação e heranças](5_task.md)
 - [ ] [6.0 Implementar tarifas comerciais e períodos](6_task.md)
 - [ ] [7.0 Persistir a oferta comercial e executar migration/backfill](7_task.md)

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using LocalizeStay.Modules.Inventory.Application.LegalPolicies;
 using LocalizeStay.SharedKernel.ErrorHandling;
 
 namespace LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
@@ -10,11 +11,12 @@ internal sealed class CommercialOffer
     internal int Revision { get; private set; }
     internal string RevisionAuthor { get; private set; } = string.Empty;
     internal OfferState State { get; private set; }
-    internal OfferValidation? CurrentValidation => _validation;
+    internal OfferValidation? CurrentValidation { get; private set; }
 
     internal bool EverSubmitted => _submissions.Count > 0;
     internal IReadOnlyList<OfferSubmission> Submissions => _submissions.AsReadOnly();
     internal IReadOnlyList<OfferReturn> Returns => _returns.AsReadOnly();
+    internal IReadOnlyList<CommercialPolicy> Policies => _policies.AsReadOnly();
 
     internal int AccommodationCount { get; private set; }
     internal int BlockingIssueCount { get; private set; }
@@ -24,9 +26,9 @@ internal sealed class CommercialOffer
     internal DateTimeOffset CreatedAt { get; private set; }
     internal DateTimeOffset UpdatedAt { get; private set; }
 
-    private OfferValidation? _validation;
     private readonly List<OfferSubmission> _submissions = [];
     private readonly List<OfferReturn> _returns = [];
+    private readonly List<CommercialPolicy> _policies = [];
     private readonly List<PendingIssueType> _pendingIssues = [];
 
     private CommercialOffer()
@@ -101,7 +103,7 @@ internal sealed class CommercialOffer
             validatedBy,
             validatedAt);
 
-        _validation = validation;
+        CurrentValidation = validation;
         State = OfferState.Validated;
         UpdatedAt = validatedAt.ToUniversalTime();
     }
@@ -123,14 +125,14 @@ internal sealed class CommercialOffer
                 "REVISION_MISMATCH");
         }
 
-        if (_validation is null || _validation.Status != ValidationStatus.Valid)
+        if (CurrentValidation is null || CurrentValidation.Status != ValidationStatus.Valid)
         {
             throw new BusinessRuleViolationException(
                 "A valid validation is required before submission.",
                 "VALIDATION_REQUIRED");
         }
 
-        if (_validation.Revision != Revision)
+        if (CurrentValidation.Revision != Revision)
         {
             throw new BusinessRuleViolationException(
                 "The validation was created for a different revision.",
@@ -292,8 +294,114 @@ internal sealed class CommercialOffer
         }
     }
 
+    internal CommercialPolicy AddPolicy(
+        Guid policyId,
+        CommercialPolicyRuleSet ruleSet,
+        bool isDefault,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        CommercialPolicy created = null!;
+
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            if (_policies.Any(p => p.Type == ruleSet.Type && p.Status == PolicyStatus.Active))
+            {
+                throw new BusinessRuleViolationException(
+                    $"A policy of type '{ruleSet.Type}' is already active for this property.",
+                    "POLICY_TYPE_ALREADY_ACTIVE");
+            }
+
+            created = CommercialPolicy.Create(policyId, PropertyId, ruleSet, isDefault, now);
+            _policies.Add(created);
+        });
+
+        return created;
+    }
+
+    internal void SetDefaultPolicy(
+        Guid policyId,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var policy = _policies.SingleOrDefault(p => p.Id == policyId)
+                ?? throw new NotFoundException("Commercial policy was not found.", "POLICY_NOT_FOUND");
+
+            if (policy.Status != PolicyStatus.Active)
+                throw new BusinessRuleViolationException(
+                    "Only active policies can be set as default.",
+                    "POLICY_NOT_ACTIVE");
+
+            if (policy.IsDefault)
+                return;
+
+            foreach (var p in _policies.Where(p => p.Id != policyId && p.IsDefault))
+            {
+                p.UnsetDefault();
+            }
+
+            policy.SetDefault();
+        });
+    }
+
+    internal void DeactivatePolicy(
+        Guid policyId,
+        Guid replacementPolicyId,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var policy = _policies.SingleOrDefault(p => p.Id == policyId)
+                ?? throw new NotFoundException("Commercial policy was not found.", "POLICY_NOT_FOUND");
+
+            var replacement = _policies.SingleOrDefault(
+                p => p.Id == replacementPolicyId && p.Status == PolicyStatus.Active
+                    && p.Id != policyId && p.PropertyId == PropertyId);
+
+            if (replacement is null)
+            {
+                throw new BusinessRuleViolationException(
+                    "A different active policy from this property is required as replacement.",
+                    "REPLACEMENT_POLICY_REQUIRED");
+            }
+
+            policy.Deactivate();
+        });
+    }
+
+    internal void DeletePolicy(
+        Guid policyId,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var policy = _policies.SingleOrDefault(p => p.Id == policyId)
+                ?? throw new NotFoundException("Commercial policy was not found.", "POLICY_NOT_FOUND");
+
+            if (!policy.CanDelete())
+            {
+                throw new BusinessRuleViolationException(
+                    "Policy cannot be deleted because it was submitted, is the default, or is still in use.",
+                    "POLICY_DELETION_NOT_ALLOWED");
+            }
+
+            _policies.Remove(policy);
+        });
+    }
+
+    internal CommercialPolicy? GetPolicy(Guid policyId) =>
+        _policies.SingleOrDefault(p => p.Id == policyId);
+
     private void InvalidateValidationOnMutate()
     {
-        _validation?.Invalidate(UpdatedAt);
+        CurrentValidation?.Invalidate(UpdatedAt);
     }
 }
