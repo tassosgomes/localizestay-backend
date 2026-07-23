@@ -35,6 +35,14 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
 
     public DbSet<CommercialRate> CommercialRates => Set<CommercialRate>();
 
+    public DbSet<OfferValidation> OfferValidations => Set<OfferValidation>();
+
+    public DbSet<OfferSubmission> OfferSubmissions => Set<OfferSubmission>();
+
+    public DbSet<OfferReturn> OfferReturns => Set<OfferReturn>();
+
+    public DbSet<CommercialOfferIdempotencyKey> CommercialOfferIdempotencyKeys => Set<CommercialOfferIdempotencyKey>();
+
     /// <summary>
     /// Append-only business audit rows owned by this schema (ADR-003).
     /// </summary>

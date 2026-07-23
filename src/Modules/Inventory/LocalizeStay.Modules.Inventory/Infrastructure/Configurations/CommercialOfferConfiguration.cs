@@ -1,5 +1,6 @@
 using System.Text.Json;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
+using LocalizeStay.Modules.Inventory.Domain.IncorporatedProperties;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -71,27 +72,45 @@ internal sealed class CommercialOfferConfiguration : IEntityTypeConfiguration<Co
                 list => list.Count,
                 list => list.ToList()));
 
+        builder.HasOne<IncorporatedProperty>()
+            .WithOne()
+            .HasForeignKey<CommercialOffer>(o => o.Id)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.HasOne(o => o.CurrentValidation)
             .WithOne()
-            .HasForeignKey<OfferValidation>(v => v.PropertyId);
+            .HasForeignKey<CommercialOffer>("CurrentValidationId")
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasMany(o => o.Submissions)
             .WithOne()
-            .HasForeignKey(s => s.PropertyId);
+            .HasForeignKey(s => s.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(o => o.Returns)
             .WithOne()
-            .HasForeignKey(r => r.PropertyId);
+            .HasForeignKey(r => r.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(o => o.Policies)
             .WithOne()
-            .HasForeignKey(p => p.PropertyId);
+            .HasForeignKey(p => p.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(o => o.Accommodations)
             .WithOne()
-            .HasForeignKey(a => a.PropertyId);
+            .HasForeignKey(a => a.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(o => o.Rates)
+            .WithOne()
+            .HasForeignKey(r => r.PropertyId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(o => o.State)
             .HasDatabaseName("ix_commercial_offers_state");
+
+        builder.HasIndex(o => new { o.State, o.TargetSubmissionAt })
+            .HasDatabaseName("ix_commercial_offers_state_target_submission");
     }
 }

@@ -4,6 +4,55 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 7.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Teste
+   Origem Provável: Modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `OfferSubmission_SnapshotJson_PersistsAsJsonb` compara strings JSON com `Should().Be()` após round-trip pelo PostgreSQL jsonb. O PostgreSQL normaliza a ordenação de chaves, resultando em falha: o esperado é `{"accommodations":3,"policies":2}` e o retornado é `{"policies": 2, "accommodations": 3}`. O teste deve desserializar ambos os valores e comparar objetos, não strings.
+
+2. Categoria Técnica: Falha de validação
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task (subtarefa 7.3)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A subtarefa 7.3 exige traduzir `DbUpdateConcurrencyException` para `REVISION_MISMATCH`. O concurrency token em `Revision` está configurado (`IsConcurrencyToken()`), e o domínio lança `REVISION_MISMATCH` em verificações explícitas. Porém, `DbUpdateConcurrencyException` não é capturado em nenhum `SaveChangesAsync` — não há `try-catch` nos handlers, interceptor, middleware, ou override no DbContext. Busca por `DbUpdateConcurrencyException` no codebase retorna zero resultados.
+
+3. Categoria Técnica: Feature incompleta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec / Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Índice `commercial_offers(property_id)` exigido pela task e techspec não foi criado como índice explícito na migration. A tabela tem colunas separadas `Id` (PK) e `property_id`. Embora o domínio sempre defina `Id == PropertyId`, consultas `WHERE property_id = @p0` não usam o índice PK (que é em `Id`).
+
+4. Categoria Técnica: Teste inadequado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `Backfill_IncorporatedProperties_IsIdempotent` cria manualmente um `IncorporatedProperty` e conta registros, mas não executa o SQL de backfill da migration nem verifica que rodá-lo duas vezes não duplica registros. O SQL de backfill está correto (`ON CONFLICT DO NOTHING`), mas o teste não comprova a idempotência do backfill.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4 (nenhum bloqueante)
+Categoria Técnica mais frequente: Teste inadequado (2)
+Origem mais frequente: Task (2)
+Indício de fragilidade estrutural? Não — build 0 erros 0 warnings, 380 unit tests passam, 8/9 persistence tests passam (1 falha por comparação de string, não por lógica). 9 EF configurations, 9 DbSets, migration com 9 tabelas, 12 índices, 1 UNIQUE constraint, JSONB com ValueComparer, tipos corretos (long centavos, DateOnly, DateTimeOffset), backfill idempotente, FKs internas ao schema inventory. As issues são pontuais e não exigem reimplementação significativa.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar o ponto exato da tradução de `DbUpdateConcurrencyException` (ex: override de `SaveChangesAsync` no DbContext, interceptor EF, ou `try-catch` nos handlers) para evitar ambiguidade sobre onde a responsabilidade reside.
+- Template de Task: Incluir nota sobre comparação de JSONB: strings serializadas podem divergir em ordenação de chaves após round-trip no PostgreSQL; usar `JToken.DeepEquals()` ou `JsonElement` comparison.
+- Skill: `dotnet-dependency-config` pode incluir padrão para tradução de `DbUpdateConcurrencyException` em DbContexts que usam concurrency tokens.
+
+---
+
 ## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 6.0
 
 Modelo utilizado:
