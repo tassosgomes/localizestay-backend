@@ -4,6 +4,65 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 6.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task / Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O API Contract define `MealPlan` como `[roomOnly, breakfast, halfBoard, fullBoard]` e o validator aceita `"roomOnly"`, mas o enum de domínio `MealPlan` tem `None` (não `RoomOnly`). O handler usa `Enum.Parse<MealPlan>(command.MealPlan, true)`, que lança `ArgumentException` para `"roomOnly"` — falha de runtime para um valor válido do contrato. Correção: renomear `None` → `RoomOnly` no enum de domínio (`CommercialOfferValues.cs:56`), já que `null` (via `MealPlan?`) já representa "não especificado".
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O teste `Rate_MandatoryFeesIncluded_AlwaysTrue` apenas verifica `IsComplete()` em vez de testar a invariante `mandatoryFeesIncluded`. A entidade `CommercialRate` não possui campo `mandatoryFeesIncluded` nem `currency`; embora a task declare que são "invariantes do servidor", o teste não comprova nenhuma invariante real.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (1 bloqueante)
+Categoria Técnica mais frequente: Erro de integração / Teste inadequado (1 de cada)
+Origem mais frequente: Task (2)
+Indício de fragilidade estrutural? Não — build 0 erros 0 warnings, 52 testes passam, 380 unit tests passam, 27 architecture tests passam, encapsulamento `internal` mantido, overlap detection correto, EF config com índices apropriados, CQRS nativo, FluentValidation nos 3 commands, Completeness integrado. Apenas o mismatch de enum entre contrato e domínio precisa de correção mecânica.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a correspondência exata entre os valores do API Contract (camelCase) e os nomes do enum de domínio (PascalCase) para cada enum exposto.
+- Template de Task: N/A
+- Skill: `dotnet-code-quality` pode incluir verificação de que `Enum.Parse` deve ter correspondência exata com os valores do contrato OpenAPI.
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 6.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
+
+### Resumo da Tarefa
+
+Total de Problemas: 0 (Issue 1 bloqueante da iteração anterior resolvido; Issue 2 não bloqueante persiste como observação)
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — a correção `MealPlan.None → MealPlan.RoomOnly` alinha o enum de domínio com os valores do API Contract (`roomOnly, breakfast, halfBoard, fullBoard`). `Enum.Parse<MealPlan>("roomOnly", true)` agora resolve corretamente via case-insensitive match. Zero referências a `MealPlan.None` no codebase. Build 0 erros 0 warnings, 52 CommercialRateTests passam, 380 UnitTests passam. A observação não bloqueante (teste `Rate_MandatoryFeesIncluded_AlwaysTrue` com nome enganoso) permanece para melhoria futura.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a correspondência exata entre os valores do API Contract (camelCase) e os nomes do enum de domínio (PascalCase) para cada enum exposto.
+- Template de Task: N/A
+- Skill: `dotnet-code-quality` pode incluir verificação de que `Enum.Parse` deve ter correspondência exata com os valores do contrato OpenAPI.
+
+---
+
 ## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 3.0
 
 Modelo utilizado:

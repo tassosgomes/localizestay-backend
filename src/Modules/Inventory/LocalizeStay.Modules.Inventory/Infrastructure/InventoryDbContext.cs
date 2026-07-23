@@ -33,6 +33,8 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
 
     public DbSet<Accommodation> Accommodations => Set<Accommodation>();
 
+    public DbSet<CommercialRate> CommercialRates => Set<CommercialRate>();
+
     /// <summary>
     /// Append-only business audit rows owned by this schema (ADR-003).
     /// </summary>

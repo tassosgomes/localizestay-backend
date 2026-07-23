@@ -53,7 +53,7 @@ internal enum BedType
 
 internal enum MealPlan
 {
-    None,
+    RoomOnly,
     Breakfast,
     HalfBoard,
     FullBoard,
@@ -89,6 +89,13 @@ internal sealed record BedEntry(BedType Type, int Count)
 
 internal enum AccommodationStatus
 {
+    Active,
+    Inactive,
+}
+
+internal enum RateStatus
+{
+    Draft,
     Active,
     Inactive,
 }

@@ -687,7 +687,7 @@ public sealed class AccommodationTests
         var accommodation = Accommodation.Create(
             Guid.NewGuid(), Guid.NewGuid(), "Complete Room", Guid.NewGuid(), null, DateTimeOffset.UtcNow);
         accommodation.SetOccupancy(2, 0, 2);
-        accommodation.SetMealPlan(MealPlan.None);
+        accommodation.SetMealPlan(MealPlan.RoomOnly);
 
         accommodation.IsCommerciallyComplete().Should().BeTrue();
     }

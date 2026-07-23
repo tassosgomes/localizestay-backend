@@ -18,6 +18,7 @@ internal sealed class CommercialOffer
     internal IReadOnlyList<OfferReturn> Returns => _returns.AsReadOnly();
     internal IReadOnlyList<CommercialPolicy> Policies => _policies.AsReadOnly();
     internal IReadOnlyList<Accommodation> Accommodations => _accommodations.AsReadOnly();
+    internal IReadOnlyList<CommercialRate> Rates => _rates.AsReadOnly();
 
     internal int AccommodationCount { get; private set; }
     internal int BlockingIssueCount { get; private set; }
@@ -31,6 +32,7 @@ internal sealed class CommercialOffer
     private readonly List<OfferReturn> _returns = [];
     private readonly List<CommercialPolicy> _policies = [];
     private readonly List<Accommodation> _accommodations = [];
+    private readonly List<CommercialRate> _rates = [];
     private readonly List<PendingIssueType> _pendingIssues = [];
 
     private CommercialOffer()
@@ -475,14 +477,163 @@ internal sealed class CommercialOffer
         return null;
     }
 
+    internal CommercialRate? GetRate(Guid rateId) =>
+        _rates.SingleOrDefault(r => r.Id == rateId);
+
+    internal CommercialRate AddRate(
+        Guid rateId,
+        Guid accommodationId,
+        string name,
+        string conditionCode,
+        long? basePriceCents,
+        int? includedGuests,
+        long? additionalAdultPriceCents,
+        long? additionalChildPriceCents,
+        DateOnly? validFrom,
+        DateOnly? validTo,
+        int? minimumNights,
+        Guid? policyId,
+        MealPlan? mealPlan,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        CommercialRate created = null!;
+
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var accommodation = _accommodations.SingleOrDefault(a => a.Id == accommodationId)
+                ?? throw new NotFoundException("Accommodation was not found.", "ACCOMMODATION_NOT_FOUND");
+
+            created = CommercialRate.Create(
+                rateId,
+                accommodationId,
+                PropertyId,
+                name,
+                conditionCode,
+                basePriceCents,
+                includedGuests,
+                additionalAdultPriceCents,
+                additionalChildPriceCents,
+                validFrom,
+                validTo,
+                minimumNights,
+                policyId,
+                mealPlan,
+                now);
+
+            _rates.Add(created);
+        });
+
+        return created;
+    }
+
+    internal void UpdateRate(
+        Guid rateId,
+        string? name,
+        bool hasName,
+        string? conditionCode,
+        bool hasConditionCode,
+        long? basePriceCents,
+        bool hasBasePriceCents,
+        int? includedGuests,
+        bool hasIncludedGuests,
+        long? additionalAdultPriceCents,
+        bool hasAdditionalAdultPriceCents,
+        long? additionalChildPriceCents,
+        bool hasAdditionalChildPriceCents,
+        DateOnly? validFrom,
+        bool hasValidFrom,
+        DateOnly? validTo,
+        bool hasValidTo,
+        int? minimumNights,
+        bool hasMinimumNights,
+        Guid? policyId,
+        bool hasPolicyId,
+        string? mealPlan,
+        bool hasMealPlan,
+        string? deactivationReason,
+        bool hasDeactivationReason,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var rate = _rates.SingleOrDefault(r => r.Id == rateId)
+                ?? throw new NotFoundException("Commercial rate was not found.", "RATE_NOT_FOUND");
+
+            rate.Update(
+                name,
+                hasName,
+                conditionCode,
+                hasConditionCode,
+                basePriceCents,
+                hasBasePriceCents,
+                includedGuests,
+                hasIncludedGuests,
+                additionalAdultPriceCents,
+                hasAdditionalAdultPriceCents,
+                additionalChildPriceCents,
+                hasAdditionalChildPriceCents,
+                validFrom,
+                hasValidFrom,
+                validTo,
+                hasValidTo,
+                minimumNights,
+                hasMinimumNights,
+                policyId,
+                hasPolicyId,
+                mealPlan,
+                hasMealPlan,
+                deactivationReason,
+                hasDeactivationReason,
+                now);
+        });
+    }
+
+    internal void DeleteRate(
+        Guid rateId,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var rate = _rates.SingleOrDefault(r => r.Id == rateId)
+                ?? throw new NotFoundException("Commercial rate was not found.", "RATE_NOT_FOUND");
+
+            if (!rate.CanDelete())
+            {
+                throw new BusinessRuleViolationException(
+                    "Rate cannot be deleted because it was already submitted. Deactivate it instead.",
+                    "RATE_DELETION_NOT_ALLOWED");
+            }
+
+            _rates.Remove(rate);
+        });
+    }
+
+    internal IReadOnlyList<CommercialRate> GetOverlappingRates(CommercialRate candidate)
+    {
+        if (candidate.Status != RateStatus.Active)
+            return new ReadOnlyCollection<CommercialRate>([]);
+
+        return _rates
+            .Where(r => r.Id != candidate.Id && r.OverlapsWith(candidate))
+            .ToList()
+            .AsReadOnly();
+    }
     internal void RecalculateCompletenessFromAccommodations(DateTimeOffset now)
     {
         var accommodationCount = _accommodations.Count(a => a.Status == AccommodationStatus.Active);
         var completeAccommodationCount = _accommodations.Count(
             a => a.Status == AccommodationStatus.Active && a.IsCommerciallyComplete());
 
-        var activeRateCount = 0;
-        var hasAnyRateOverlap = false;
+        var activeRateCount = _rates.Count(r => r.Status == RateStatus.Active && r.IsComplete());
+        var hasAnyRateOverlap = _rates
+            .Where(r => r.Status == RateStatus.Active)
+            .Any(r => GetOverlappingRates(r).Count > 0);
 
         RecalculateCompleteness(
             accommodationCount,
