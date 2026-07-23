@@ -17,6 +17,7 @@ internal sealed class CommercialOffer
     internal IReadOnlyList<OfferSubmission> Submissions => _submissions.AsReadOnly();
     internal IReadOnlyList<OfferReturn> Returns => _returns.AsReadOnly();
     internal IReadOnlyList<CommercialPolicy> Policies => _policies.AsReadOnly();
+    internal IReadOnlyList<Accommodation> Accommodations => _accommodations.AsReadOnly();
 
     internal int AccommodationCount { get; private set; }
     internal int BlockingIssueCount { get; private set; }
@@ -29,6 +30,7 @@ internal sealed class CommercialOffer
     private readonly List<OfferSubmission> _submissions = [];
     private readonly List<OfferReturn> _returns = [];
     private readonly List<CommercialPolicy> _policies = [];
+    private readonly List<Accommodation> _accommodations = [];
     private readonly List<PendingIssueType> _pendingIssues = [];
 
     private CommercialOffer()
@@ -399,6 +401,96 @@ internal sealed class CommercialOffer
 
     internal CommercialPolicy? GetPolicy(Guid policyId) =>
         _policies.SingleOrDefault(p => p.Id == policyId);
+
+    internal Accommodation? GetAccommodation(Guid accommodationId) =>
+        _accommodations.SingleOrDefault(a => a.Id == accommodationId);
+
+    internal Accommodation AddAccommodation(
+        Guid accommodationId,
+        string commercialName,
+        Guid? defaultPolicyId,
+        ChildAgeRange? propertyDefaultChildAgeRange,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        Accommodation created = null!;
+
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            created = Accommodation.Create(
+                accommodationId,
+                PropertyId,
+                commercialName,
+                defaultPolicyId,
+                propertyDefaultChildAgeRange,
+                now);
+            _accommodations.Add(created);
+        });
+
+        return created;
+    }
+
+    internal void UpdateAccommodation(
+        Guid accommodationId,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now,
+        Action<Accommodation> apply)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var accommodation = _accommodations.SingleOrDefault(a => a.Id == accommodationId)
+                ?? throw new NotFoundException("Accommodation was not found.", "ACCOMMODATION_NOT_FOUND");
+
+            apply(accommodation);
+            accommodation.UpdateTimestamp(now);
+        });
+    }
+
+    internal void DeleteAccommodation(
+        Guid accommodationId,
+        string author,
+        int? expectedRevision,
+        DateTimeOffset now)
+    {
+        IncrementRevisionMutate(author, now, expectedRevision, () =>
+        {
+            var accommodation = _accommodations.SingleOrDefault(a => a.Id == accommodationId)
+                ?? throw new NotFoundException("Accommodation was not found.", "ACCOMMODATION_NOT_FOUND");
+
+            if (!accommodation.CanDelete())
+            {
+                throw new BusinessRuleViolationException(
+                    "Accommodation cannot be deleted because it was already submitted.",
+                    "ACCOMMODATION_DELETION_NOT_ALLOWED");
+            }
+
+            _accommodations.Remove(accommodation);
+        });
+    }
+
+    internal ChildAgeRange? GetDefaultChildAgeRange()
+    {
+        return null;
+    }
+
+    internal void RecalculateCompletenessFromAccommodations(DateTimeOffset now)
+    {
+        var accommodationCount = _accommodations.Count(a => a.Status == AccommodationStatus.Active);
+        var completeAccommodationCount = _accommodations.Count(
+            a => a.Status == AccommodationStatus.Active && a.IsCommerciallyComplete());
+
+        var activeRateCount = 0;
+        var hasAnyRateOverlap = false;
+
+        RecalculateCompleteness(
+            accommodationCount,
+            completeAccommodationCount,
+            activeRateCount,
+            hasAnyRateOverlap,
+            now);
+    }
 
     private void InvalidateValidationOnMutate()
     {

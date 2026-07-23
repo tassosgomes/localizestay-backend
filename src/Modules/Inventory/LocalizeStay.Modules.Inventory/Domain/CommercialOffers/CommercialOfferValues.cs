@@ -87,6 +87,12 @@ internal sealed record BedEntry(BedType Type, int Count)
     }
 }
 
+internal enum AccommodationStatus
+{
+    Active,
+    Inactive,
+}
+
 internal sealed record MoneyInCents(long Cents)
 {
     internal static MoneyInCents FromBRL(decimal value) => new((long)(value * 100m));

@@ -87,6 +87,10 @@ internal sealed class CommercialOfferConfiguration : IEntityTypeConfiguration<Co
             .WithOne()
             .HasForeignKey(p => p.PropertyId);
 
+        builder.HasMany(o => o.Accommodations)
+            .WithOne()
+            .HasForeignKey(a => a.PropertyId);
+
         builder.HasIndex(o => o.State)
             .HasDatabaseName("ix_commercial_offers_state");
     }

@@ -1311,3 +1311,45 @@ Sugestão de melhoria no:
 - TechSpec: N/A
 - Template de Task: N/A
 - Skill: N/A
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 5.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Feature incompleta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: TechSpec (questão aberta)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `CommercialOffer.GetDefaultChildAgeRange()` retorna stub `null`. A TechSpec identifica como questão aberta: "Definir a origem futura da faixa etária infantil padrão da propriedade; até lá, `childAgeRangeSource` poderá ser `none`." Acomodações criadas sem override explícito recebem `ChildAgeRangeSource.None`, comportamento esperado para o MVP.
+
+2. Categoria Técnica: Feature incompleta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (escopo — rates pertencem à Task 6.0)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `RecalculateCompletenessFromAccommodations` hardcoded com `activeRateCount = 0` e `hasAnyRateOverlap = false`. A completude do offer não considera tarifas ativas, o que é correto até a Task 6.0. O cálculo de pendências pode indicar `IncompleteAccommodation` quando a pendência real for `MissingActiveRate`.
+
+3. Categoria Técnica: Overengineering
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Mapeamento `ToResponse`/inline duplicado em `CreateAccommodationCommandHandler` (linhas 169-187), `UpdateAccommodationCommandHandler` (linhas 312-331) e `DeleteAccommodationCommandHandler` (linhas 355-373). A lógica `bed.Type.ToString().ToLowerInvariant()` e `status.ToString().ToLowerInvariant()` é repetida 3 vezes. Extrair para método estático compartilhado reduziria duplicação.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3 (nenhum bloqueante)
+Categoria Técnica mais frequente: Feature incompleta (2)
+Origem mais frequente: TechSpec (1), Task/escopo (1), Limitação do modelo (1)
+Indício de fragilidade estrutural? Não — a implementação é coesa, com 54 novos testes passando (328 total unit), entidade com setters privados, herança explícita de política e faixa etária, PATCH com distinção omitido/null/objeto, e conformidade completa com PRD, TechSpec e skills.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Resolver a questão aberta sobre a origem da faixa etária infantil padrão da propriedade antes da Task 10.0 (API endpoints).
+- Template de Task: N/A
+- Skill: N/A
