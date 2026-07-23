@@ -4,6 +4,30 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 2.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 1
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — build (24 projetos, 0 erros, 0 warnings), 17 testes focados passam, 177 testes unitários passam. As 8 violações de CHARSET reportadas por `dotnet format --verify-no-changes` pertencem a migrações de outbox de outros módulos (Discovery, Booking, Payments, CustomerCare, Curation, Operations, IdentityAccess, Insights), débito pré-existente do esqueleto basal sem relação com esta task. `IncorporatedProperty` está corretamente modelada como entidade `internal` com fábrica, método `Sync`, invariantes de validação, configuração EF com índice único em `onboarding_id` e 13 testes unitários cobrindo identidade, sincronização, idempotência e timestamps. O handler `SubmitToCurationCommandHandler` materializa/sincroniza a propriedade na mesma transação, com auditoria funcional e sem evento externo adicional.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
 ## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 1.0
 
 Modelo utilizado:

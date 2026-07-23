@@ -20,6 +20,7 @@ public sealed partial class BusinessAuditEntry
     private static readonly IReadOnlySet<string> _approvedMetadataKeys = new HashSet<string>(StringComparer.Ordinal)
     {
         "partnerId",
+        "propertyId",
         "propertyOnboardingId",
         "onboardingId",
         "destinationId",
