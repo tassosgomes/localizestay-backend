@@ -75,7 +75,8 @@ internal sealed class CommercialOffer
         Guid validationId,
         string validatedBy,
         int expectedRevision,
-        DateTimeOffset validatedAt)
+        DateTimeOffset validatedAt,
+        string? comment = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(validatedBy);
 
@@ -105,7 +106,8 @@ internal sealed class CommercialOffer
             PropertyId,
             Revision,
             validatedBy,
-            validatedAt);
+            validatedAt,
+            comment);
 
         CurrentValidation = validation;
         State = OfferState.Validated;
@@ -114,6 +116,21 @@ internal sealed class CommercialOffer
 
     internal OfferSubmission Submit(
         Guid submissionId,
+        string snapshotJson,
+        string submittedBy,
+        int expectedRevision,
+        DateTimeOffset submittedAt) =>
+        Submit(
+            submissionId,
+            CurrentValidation?.Id ?? Guid.Empty,
+            snapshotJson,
+            submittedBy,
+            expectedRevision,
+            submittedAt);
+
+    internal OfferSubmission Submit(
+        Guid submissionId,
+        Guid validationId,
         string snapshotJson,
         string submittedBy,
         int expectedRevision,
@@ -145,10 +162,18 @@ internal sealed class CommercialOffer
                 "VALIDATION_REQUIRED");
         }
 
+        if (CurrentValidation.Id != validationId)
+        {
+            throw new BusinessRuleViolationException(
+                "The informed validation does not match the current valid validation.",
+                "VALIDATION_REQUIRED");
+        }
+
         var submission = OfferSubmission.Create(
             submissionId,
             PropertyId,
             Revision,
+            validationId,
             snapshotJson,
             submittedBy,
             submittedAt);
@@ -326,7 +351,7 @@ internal sealed class CommercialOffer
         {
             if (_policies.Any(p => p.Type == ruleSet.Type && p.Status == PolicyStatus.Active))
             {
-                throw new BusinessRuleViolationException(
+                throw new ConflictException(
                     $"A policy of type '{ruleSet.Type}' is already active for this property.",
                     "POLICY_TYPE_ALREADY_ACTIVE");
             }
@@ -371,7 +396,8 @@ internal sealed class CommercialOffer
         Guid replacementPolicyId,
         string author,
         int? expectedRevision,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? deactivationReason = null)
     {
         IncrementRevisionMutate(author, now, expectedRevision, () =>
         {
@@ -389,7 +415,7 @@ internal sealed class CommercialOffer
                     "REPLACEMENT_POLICY_REQUIRED");
             }
 
-            policy.Deactivate();
+            policy.Deactivate(deactivationReason);
         });
     }
 
@@ -659,6 +685,8 @@ internal sealed class CommercialOffer
 
     private void InvalidateValidationOnMutate()
     {
-        CurrentValidation?.Invalidate(UpdatedAt);
+        CurrentValidation?.Invalidate(
+            UpdatedAt,
+            "Commercial data changed after validation.");
     }
 }

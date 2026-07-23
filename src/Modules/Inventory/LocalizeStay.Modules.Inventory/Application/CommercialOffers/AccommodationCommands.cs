@@ -96,6 +96,8 @@ internal sealed class CreateAccommodationCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Accommodations)
+            .Include(o => o.Policies)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 

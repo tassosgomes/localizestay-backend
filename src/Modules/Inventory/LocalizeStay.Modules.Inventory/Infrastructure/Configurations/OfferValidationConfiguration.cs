@@ -36,6 +36,17 @@ internal sealed class OfferValidationConfiguration : IEntityTypeConfiguration<Of
             .HasMaxLength(50)
             .IsRequired();
 
+        builder.Property(v => v.InvalidatedAt)
+            .HasColumnName("invalidated_at");
+
+        builder.Property(v => v.InvalidationReason)
+            .HasColumnName("invalidation_reason")
+            .HasMaxLength(500);
+
+        builder.Property(v => v.Comment)
+            .HasColumnName("comment")
+            .HasMaxLength(1_000);
+
         builder.HasIndex(v => new { v.PropertyId, v.Revision })
             .HasDatabaseName("ix_offer_validations_property_revision");
     }

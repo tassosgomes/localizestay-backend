@@ -24,7 +24,7 @@ internal sealed record CommercialOfferDetailDto(Guid PropertyId, string Property
 
 internal sealed record CommercialOfferListResponse(IReadOnlyList<CommercialOfferSummaryDto> Data, PaginationResponse Pagination);
 
-internal sealed record CommercialPolicyDto(Guid Id, Guid PropertyId, string Type, string Title, string RulesSummary, string RuleSetVersion, bool IsDefault, string Status, int UsageCount, bool EverSubmitted, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+internal sealed record CommercialPolicyDto(Guid Id, Guid PropertyId, string Type, string Title, string RulesSummary, string RuleSetVersion, bool IsDefault, string Status, int UsageCount, bool EverSubmitted, string? DeactivationReason, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 internal sealed record CommercialPolicyListResponse(IReadOnlyList<CommercialPolicyDto> Data);
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluentValidation;
 using LocalizeStay.Modules.Inventory.Application.Timing;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
@@ -116,7 +117,26 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
             var created = CommercialOffer.Create(query.PropertyId, property.InitialActor, utcNow);
             created.SetTargetSubmissionAt(businessCalendar.AddBusinessDays(utcNow, 10));
             dbContext.CommercialOffers.Add(created);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException) when (!cancellationToken.IsCancellationRequested)
+            {
+                dbContext.ChangeTracker.Clear();
+                offer = await dbContext.CommercialOffers.AsNoTracking()
+                    .Include(o => o.CurrentValidation)
+                    .Include(o => o.Submissions)
+                    .Include(o => o.Returns)
+                    .Include(o => o.Policies)
+                    .Include(o => o.Accommodations)
+                    .Include(o => o.Rates)
+                    .AsSplitQuery()
+                    .SingleOrDefaultAsync(o => o.PropertyId == query.PropertyId, cancellationToken);
+                if (offer is not null)
+                    goto OfferLoaded;
+                throw;
+            }
 
             return new CommercialOfferDetailDto(
                 created.PropertyId,
@@ -143,6 +163,7 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
                 created.UpdatedAt);
         }
 
+    OfferLoaded:
         var completeness = 100 - offer.BlockingIssueCount * 33;
         if (completeness < 0) completeness = 0;
 
@@ -151,16 +172,7 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
         OfferValidationResponse? currentValidation = null;
         if (offer.CurrentValidation is not null)
         {
-            currentValidation = new OfferValidationResponse(
-                offer.CurrentValidation.Id,
-                offer.CurrentValidation.PropertyId,
-                offer.CurrentValidation.Revision,
-                CommercialOfferMapper.ContractValue(offer.CurrentValidation.Status),
-                CommercialOfferMapper.ToStaffActor(offer.CurrentValidation.ValidatedBy, offer.CurrentValidation.ValidatedBy),
-                offer.CurrentValidation.ValidatedAt,
-                null,
-                null,
-                null);
+            currentValidation = CommercialOfferMapper.ToResponse(offer.CurrentValidation);
         }
 
         OfferReturnResponse? latestReturn = null;
@@ -193,6 +205,7 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
             CommercialOfferMapper.ContractValue(p.Status),
             p.UsageCount,
             p.EverSubmitted,
+            p.DeactivationReason,
             p.CreatedAt,
             p.UpdatedAt)).ToList();
 
@@ -276,6 +289,7 @@ internal sealed class ListCommercialPoliciesQueryHandler(InventoryDbContext dbCo
             CommercialOfferMapper.ContractValue(p.Status),
             p.UsageCount,
             p.EverSubmitted,
+            p.DeactivationReason,
             p.CreatedAt,
             p.UpdatedAt)).ToListAsync(cancellationToken);
 
@@ -462,7 +476,18 @@ internal sealed class ListCommercialRatesQueryValidator : AbstractValidator<List
     {
         RuleFor(q => q.Page).GreaterThanOrEqualTo(1);
         RuleFor(q => q.Size).InclusiveBetween(1, 100);
+        RuleFor(q => q.ActiveOn).Must(BeIsoDate).When(q => q.ActiveOn is not null);
+        RuleFor(q => q.ValidFrom).Must(BeIsoDate).When(q => q.ValidFrom is not null);
+        RuleFor(q => q.ValidTo).Must(BeIsoDate).When(q => q.ValidTo is not null);
     }
+
+    private static bool BeIsoDate(string? value) =>
+        DateOnly.TryParseExact(
+            value,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _);
 }
 
 internal sealed class ListCommercialOfferHistoryQueryHandler(InventoryDbContext dbContext, IValidator<ListCommercialOfferHistoryQuery> validator) : IQueryHandler<ListCommercialOfferHistoryQuery, OfferHistoryListResponse>

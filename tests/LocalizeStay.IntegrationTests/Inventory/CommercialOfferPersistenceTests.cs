@@ -160,8 +160,21 @@ public sealed class CommercialOfferPersistenceTests : IClassFixture<LocalizeStay
         await dbContext.SaveChangesAsync();
 
         var snapshotJson = JsonSerializer.Serialize(new { accommodations = 3, policies = 2 });
+        var validation = OfferValidation.Create(
+            Guid.NewGuid(),
+            propertyId,
+            1,
+            "reviewer-test",
+            now);
+        await dbContext.OfferValidations.AddAsync(validation);
         var submission = OfferSubmission.Create(
-            Guid.NewGuid(), propertyId, 1, snapshotJson, "staff-test", now);
+            Guid.NewGuid(),
+            propertyId,
+            1,
+            validation.Id,
+            snapshotJson,
+            "staff-test",
+            now);
 
         await dbContext.OfferSubmissions.AddAsync(submission);
         await dbContext.SaveChangesAsync();
@@ -172,8 +185,11 @@ public sealed class CommercialOfferPersistenceTests : IClassFixture<LocalizeStay
             .SingleOrDefaultAsync(s => s.Id == submission.Id);
 
         loaded.Should().NotBeNull();
-        loaded!.SnapshotJson.Should().Be(snapshotJson);
+        var persistedSnapshot = JsonSerializer.Deserialize<JsonElement>(loaded!.SnapshotJson);
+        persistedSnapshot.GetProperty("accommodations").GetInt32().Should().Be(3);
+        persistedSnapshot.GetProperty("policies").GetInt32().Should().Be(2);
         loaded.PropertyId.Should().Be(propertyId);
+        loaded.ValidationId.Should().Be(validation.Id);
     }
 
     [Fact]

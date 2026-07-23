@@ -35,6 +35,11 @@ public sealed partial class BusinessAuditEntry
         "eventId",
         "submissionId",
         "validationId",
+        "policyType",
+        "policyId",
+        "replacementPolicyId",
+        "accommodationId",
+        "rateId",
     };
 
     private const int MaxSummaryLength = 500;

@@ -60,6 +60,10 @@ internal sealed class CommercialPolicyConfiguration : IEntityTypeConfiguration<C
             .HasMaxLength(100)
             .IsRequired();
 
+        builder.Property(p => p.DeactivationReason)
+            .HasColumnName("deactivation_reason")
+            .HasMaxLength(500);
+
         builder.Property(p => p.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();

@@ -21,6 +21,10 @@ internal sealed class OfferSubmissionConfiguration : IEntityTypeConfiguration<Of
             .HasColumnName("revision")
             .IsRequired();
 
+        builder.Property(s => s.ValidationId)
+            .HasColumnName("validation_id")
+            .IsRequired();
+
         builder.Property(s => s.SnapshotJson)
             .HasColumnName("snapshot_json")
             .HasColumnType("jsonb")
@@ -37,5 +41,13 @@ internal sealed class OfferSubmissionConfiguration : IEntityTypeConfiguration<Of
 
         builder.HasIndex(s => new { s.PropertyId, s.Revision })
             .HasDatabaseName("ix_offer_submissions_property_revision");
+
+        builder.HasIndex(s => s.ValidationId)
+            .HasDatabaseName("ix_offer_submissions_validation_id");
+
+        builder.HasOne<OfferValidation>()
+            .WithMany()
+            .HasForeignKey(s => s.ValidationId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -23,6 +23,12 @@ internal static class InventoryEndpoints
         endpoints.MapPropertyOnboardingEndpoints();
         endpoints.MapPropertyOnboardingSubresourceEndpoints();
         endpoints.MapPropertyOnboardingReadEndpoints();
+        endpoints.MapCommercialOfferEndpoints();
+        endpoints.MapCommercialPolicyEndpoints();
+        endpoints.MapAccommodationEndpoints();
+        endpoints.MapCommercialRateEndpoints();
+        endpoints.MapCommercialOfferWorkflowEndpoints();
+        endpoints.MapCommercialOfferMetricsEndpoints();
     }
 
     private static async Task<InventoryModuleStatusResponse> GetModuleStatusAsync(

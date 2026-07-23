@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using AwesomeAssertions;
 using LocalizeStay.Modules.Inventory.Application.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
@@ -32,10 +30,10 @@ public sealed class CommercialOfferCommandHandlerTests
             new ValidateCommercialOfferCommandValidator());
 
         var result = await handler.HandleAsync(
-            new ValidateCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), Validator1, offer.Revision),
+            new ValidateCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), Validator1, offer.Revision, null),
             CancellationToken.None);
 
-        result.State.Should().Be("validated");
+        result.Status.Should().Be("valid");
         var reloaded = await dbContext.CommercialOffers.SingleAsync(o => o.PropertyId == offer.PropertyId);
         reloaded.State.Should().Be(OfferState.Validated);
         reloaded.CurrentValidation.Should().NotBeNull();
@@ -54,7 +52,7 @@ public sealed class CommercialOfferCommandHandlerTests
             new ValidateCommercialOfferCommandValidator());
 
         var act = () => handler.HandleAsync(
-            new ValidateCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), Author1, offer.Revision),
+            new ValidateCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), Author1, offer.Revision, null),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<LocalizeStay.SharedKernel.ErrorHandling.BusinessRuleViolationException>()
@@ -74,7 +72,7 @@ public sealed class CommercialOfferCommandHandlerTests
             new ValidateCommercialOfferCommandValidator());
 
         var act = () => handler.HandleAsync(
-            new ValidateCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), Validator1, offer.Revision + 1),
+            new ValidateCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), Validator1, offer.Revision + 1, null),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<LocalizeStay.SharedKernel.ErrorHandling.BusinessRuleViolationException>()
@@ -94,14 +92,19 @@ public sealed class CommercialOfferCommandHandlerTests
             new SubmitCommercialOfferCommandValidator());
 
         var submissionId = Guid.NewGuid();
-        var snapshotJson = SerializeTestSnapshot(offer, Submitter1);
 
         var result = await handler.HandleAsync(
-            new SubmitCommercialOfferCommand(offer.PropertyId, submissionId, snapshotJson, Submitter1, offer.Revision),
+            new SubmitCommercialOfferCommand(
+                offer.PropertyId,
+                submissionId,
+                offer.CurrentValidation!.Id,
+                Submitter1,
+                offer.Revision),
             CancellationToken.None);
 
-        result.State.Should().Be("submitted");
-        result.EverSubmitted.Should().BeTrue();
+        result.Status.Should().Be("accepted");
+        result.ValidationId.Should().Be(offer.CurrentValidation.Id);
+        (await dbContext.CommercialOffers.SingleAsync()).State.Should().Be(OfferState.Submitted);
         (await dbContext.CommercialOfferIdempotencyKeys.CountAsync()).Should().Be(1);
         (await dbContext.OutboxMessages.CountAsync()).Should().Be(1);
     }
@@ -119,17 +122,26 @@ public sealed class CommercialOfferCommandHandlerTests
             new SubmitCommercialOfferCommandValidator());
 
         var submissionId = Guid.NewGuid();
-        var snapshotJson = SerializeTestSnapshot(offer, Submitter1);
 
         var first = await handler.HandleAsync(
-            new SubmitCommercialOfferCommand(offer.PropertyId, submissionId, snapshotJson, Submitter1, offer.Revision),
+            new SubmitCommercialOfferCommand(
+                offer.PropertyId,
+                submissionId,
+                offer.CurrentValidation!.Id,
+                Submitter1,
+                offer.Revision),
             CancellationToken.None);
 
         var replay = await handler.HandleAsync(
-            new SubmitCommercialOfferCommand(offer.PropertyId, submissionId, snapshotJson, Submitter1, offer.Revision),
+            new SubmitCommercialOfferCommand(
+                offer.PropertyId,
+                submissionId,
+                offer.CurrentValidation.Id,
+                Submitter1,
+                offer.Revision),
             CancellationToken.None);
 
-        replay.State.Should().Be(first.State);
+        replay.Status.Should().Be(first.Status);
         replay.Revision.Should().Be(first.Revision);
     }
 
@@ -146,13 +158,22 @@ public sealed class CommercialOfferCommandHandlerTests
             new SubmitCommercialOfferCommandValidator());
 
         var submissionId = Guid.NewGuid();
-        var snapshotJson = SerializeTestSnapshot(offer, Submitter1);
 
         await handler.HandleAsync(
-            new SubmitCommercialOfferCommand(offer.PropertyId, submissionId, snapshotJson, Submitter1, offer.Revision),
+            new SubmitCommercialOfferCommand(
+                offer.PropertyId,
+                submissionId,
+                offer.CurrentValidation!.Id,
+                Submitter1,
+                offer.Revision),
             CancellationToken.None);
 
-        var diffCommand = new SubmitCommercialOfferCommand(offer.PropertyId, submissionId, "{}", Submitter1, offer.Revision);
+        var diffCommand = new SubmitCommercialOfferCommand(
+            offer.PropertyId,
+            submissionId,
+            Guid.NewGuid(),
+            Submitter1,
+            offer.Revision);
 
         var act = () => handler.HandleAsync(diffCommand, CancellationToken.None);
 
@@ -173,7 +194,12 @@ public sealed class CommercialOfferCommandHandlerTests
             new SubmitCommercialOfferCommandValidator());
 
         var act = () => handler.HandleAsync(
-            new SubmitCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), "{}", Submitter1, offer.Revision),
+            new SubmitCommercialOfferCommand(
+                offer.PropertyId,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Submitter1,
+                offer.Revision),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<LocalizeStay.SharedKernel.ErrorHandling.BusinessRuleViolationException>()
@@ -192,7 +218,12 @@ public sealed class CommercialOfferCommandHandlerTests
             new SubmitCommercialOfferCommandValidator());
 
         var act = () => handler.HandleAsync(
-            new SubmitCommercialOfferCommand(Guid.NewGuid(), Guid.NewGuid(), "{}", Submitter1, 1),
+            new SubmitCommercialOfferCommand(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Submitter1,
+                1),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<LocalizeStay.SharedKernel.ErrorHandling.NotFoundException>();
@@ -213,9 +244,13 @@ public sealed class CommercialOfferCommandHandlerTests
             Mock.Of<ICorrelationIdAccessor>(a => a.CorrelationId == "corr-001"),
             new SubmitCommercialOfferCommandValidator());
 
-        var snapshotJson = SerializeTestSnapshot(offer, Submitter1);
         var act = () => handler.HandleAsync(
-            new SubmitCommercialOfferCommand(offer.PropertyId, Guid.NewGuid(), snapshotJson, Submitter1, offer.Revision),
+            new SubmitCommercialOfferCommand(
+                offer.PropertyId,
+                Guid.NewGuid(),
+                offer.CurrentValidation!.Id,
+                Submitter1,
+                offer.Revision),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<LocalizeStay.SharedKernel.ErrorHandling.BusinessRuleViolationException>()
@@ -247,30 +282,6 @@ public sealed class CommercialOfferCommandHandlerTests
         offer.Validate(validationId, Validator1, offer.Revision, _now);
         await dbContext.SaveChangesAsync();
         return offer;
-    }
-
-    private static string SerializeTestSnapshot(CommercialOffer offer, string submittedBy)
-    {
-        var snapshot = new
-        {
-            snapshotVersion = 1,
-            offer.Id,
-            offer.PropertyId,
-            revision = offer.Revision,
-            revisionAuthor = offer.RevisionAuthor,
-            state = offer.State.ToString(),
-            submittedBy,
-            submittedAt = _now,
-            accommodations = Array.Empty<object>(),
-            policies = Array.Empty<object>(),
-        };
-
-        return JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
-        {
-            WriteIndented = false,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        });
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock

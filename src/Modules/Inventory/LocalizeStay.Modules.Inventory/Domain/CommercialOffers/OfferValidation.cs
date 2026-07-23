@@ -8,6 +8,9 @@ internal sealed class OfferValidation
     internal string ValidatedBy { get; private set; } = string.Empty;
     internal DateTimeOffset ValidatedAt { get; private set; }
     internal ValidationStatus Status { get; private set; }
+    internal DateTimeOffset? InvalidatedAt { get; private set; }
+    internal string? InvalidationReason { get; private set; }
+    internal string? Comment { get; private set; }
 
     private OfferValidation()
     {
@@ -18,7 +21,16 @@ internal sealed class OfferValidation
         Guid propertyId,
         int revision,
         string validatedBy,
-        DateTimeOffset validatedAt)
+        DateTimeOffset validatedAt) =>
+        Create(id, propertyId, revision, validatedBy, validatedAt, null);
+
+    internal static OfferValidation Create(
+        Guid id,
+        Guid propertyId,
+        int revision,
+        string validatedBy,
+        DateTimeOffset validatedAt,
+        string? comment)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(validatedBy);
 
@@ -30,14 +42,17 @@ internal sealed class OfferValidation
             ValidatedBy = validatedBy.Trim(),
             ValidatedAt = validatedAt.ToUniversalTime(),
             Status = ValidationStatus.Valid,
+            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(),
         };
     }
 
-    internal void Invalidate(DateTimeOffset invalidatedAt)
+    internal void Invalidate(DateTimeOffset invalidatedAt, string? reason = null)
     {
         if (Status != ValidationStatus.Valid)
             return;
 
         Status = ValidationStatus.Invalidated;
+        InvalidatedAt = invalidatedAt.ToUniversalTime();
+        InvalidationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
     }
 }

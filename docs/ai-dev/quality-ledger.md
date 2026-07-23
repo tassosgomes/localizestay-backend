@@ -1510,3 +1510,143 @@ Sugestão de melhoria no:
 - TechSpec: Especificar a fórmula exata de `DualValidationRate` e o comportamento de retry do GET concorrente de criação de draft.
 - Template de Task: Exigir teste de concorrência para handlers que criam entidades sob constraint de unicidade.
 - Skill: `dotnet-testing` pode incluir cenário de teste para idempotência concorrente com EF Core.
+
+## 2026-07-23 | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Iteracao #5)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Tecnica: Erro de integracao
+   Severidade: P0 (bloqueante)
+   Fase Detectada: Teste
+   Origem Provavel: Limitacao do modelo / Contexto insuficiente (SDK version-specific behavior)
+   Necessitou Reimplementacao Significativa? Nao — requer ajuste na estrategia de claim mapping
+   Descricao: `JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear()` chamado no `PostConfigure` da factory de testes nao previne o mapeamento de claims no `Microsoft.IdentityModel.Tokens` 8.x (SDK .NET 10.0.10). As claims `scope` e `permission` continuam sendo mapeadas para tipos .NET, resultando em 403 para todas as requisicoes autenticadas com permissoes validas. 11 de 15 testes falham.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Tecnica mais frequente: Erro de integracao
+Origem mais frequente: Limitacao do modelo
+Indicio de fragilidade estrutural? Nao
+Sugestao de melhoria no:
+- TechSpec: Documentar a versao especifica de Microsoft.IdentityModel.Tokens e o mecanismo correto para desabilitar inbound claim mapping
+- Template de Task: Incluir verificacao de claim mapping nas validacoes de seguranca para testes de integracao
+- Skill: Atualizar `dotnet-testing` com orientacoes sobre configuracao de claims no WebApplicationFactory para SDK 10.x
+
+---
+
+## [2026-07-23] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Revalidação #8)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O setup `EnsurePropertyExistsAsync` envia um onboarding sem o objeto obrigatório `property` e usa um `partnerId` aleatório em vez do parceiro criado. A API responde 400 (`Property must not be empty`) e o teste mascara a causa com `KeyNotFoundException` ao acessar `id`. Nove dos quinze testes de integração não chegam aos endpoints da tarefa.
+
+2. Categoria Técnica: Erro de integração
+   Severidade: Crítica
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: Os endpoints de validação e submissão retornam `CommercialOfferResponse`, enquanto o contrato exige `OfferValidation` e `OfferSubmission`. O `ValidationId` recebido na requisição de submissão é ignorado pelo endpoint e não existe no command do domínio.
+
+3. Categoria Técnica: Falha de validação
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O retorno manual de 400 para `Idempotency-Key` ausente ou inválido não inclui os campos obrigatórios `code` e `traceId` e não passa pelo pipeline padronizado de Problem Details.
+
+4. Categoria Técnica: Falha de validação
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `DateOnly.ParseExact` nos endpoints de tarifa e `DateTimeOffset.Parse` no endpoint de métricas podem lançar `FormatException`. Como o exception handler não converte essa exceção em 400, datas sintaticamente inválidas podem retornar 500 contra o contrato.
+
+5. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `TwentyUniqueEndpoints_ShouldExist` apenas conta strings em um `HashSet` hardcoded e não verifica o `EndpointDataSource`. Também não há cobertura efetiva de 429 nem do formato RFC 9457 para todos os status exigidos.
+
+### Resumo da Tarefa
+
+Total de Problemas: 5 (1 crítico, 3 altos e 1 médio)
+Categoria Técnica mais frequente: Teste inadequado / Falha de validação (2 cada)
+Origem mais frequente: Limitação do modelo (4)
+Indício de fragilidade estrutural? Sim — depois da correção do helper de autenticação, a suíte ainda reprova 9/15 casos por setup inválido e a inspeção encontrou divergências críticas entre os endpoints de workflow e o contrato.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Explicitar os DTOs completos de resposta de validação/submissão e a obrigatoriedade de correlacionar a submissão com o `validationId` recebido.
+- Template de Task: Exigir que fixtures validem cada resposta de setup e que a contagem de endpoints consulte o pipeline real.
+- Skill: Incluir, em `dotnet-testing`, orientação para evitar overloads ambíguos em helpers `params` de autenticação e para validar fixtures antes do cenário principal.
+
+---
+
+## [2026-07-23] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Revalidação #9)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A primeira execução da suíte completa de integração falhou em `PropertyOnboardingWorkflowTests.LifecycleEndpoints_WithPoliciesRetryReturnCloseAndNewCycle_ShouldPreserveWorkflowHistory`, com uma resposta 422 onde o teste esperava 201. O caso passou isoladamente e a suíte completa passou 71/71 na repetição, caracterizando comportamento intermitente fora do conjunto focado da tarefa.
+
+2. Categoria Técnica: Falha de validação
+   Severidade: Baixa
+   Fase Detectada: Build
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet format LocalizeStay.sln --verify-no-changes --no-restore` continua reprovando por oito migrations `InitialOutbox.cs` preexistentes em outros módulos. A verificação dirigida a todos os arquivos alterados pela tarefa passou.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum defeito funcional novo na tarefa 10.0)
+Categoria Técnica mais frequente: Teste inadequado / Falha de validação (1 de cada)
+Origem mais frequente: Contexto insuficiente (2)
+Indício de fragilidade estrutural? Sim — os gates globais do repositório ainda não são determinísticos ou integralmente verdes, apesar de build 24/24, testes unitários comerciais 95/95, testes focados 18/18, repetição da integração 71/71 e formatação do escopo estarem aprovados.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: Distinguir explicitamente gates obrigatórios do escopo da tarefa e gates globais do repositório, mantendo ambos visíveis.
+- Skill: Permitir registrar dívida preexistente e flakiness não reproduzível separadamente, sem perder a rastreabilidade da regra de reprovação por comando.
+
+---
+
+## [2026-07-23] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Revalidação #10)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A

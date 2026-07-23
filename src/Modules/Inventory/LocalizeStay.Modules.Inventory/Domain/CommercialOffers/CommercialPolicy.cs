@@ -14,6 +14,8 @@ internal sealed class CommercialPolicy
     internal int UsageCount { get; private set; }
     internal bool EverSubmitted { get; private set; }
 
+    internal string? DeactivationReason { get; private set; }
+
     internal string Title { get; private set; } = string.Empty;
     internal string RulesSummary { get; private set; } = string.Empty;
     internal string RuleSetVersion { get; private set; } = string.Empty;
@@ -77,7 +79,7 @@ internal sealed class CommercialPolicy
         IsDefault = false;
     }
 
-    internal void Deactivate()
+    internal void Deactivate(string? deactivationReason = null)
     {
         if (Status != PolicyStatus.Active)
             throw new BusinessRuleViolationException(
@@ -86,6 +88,7 @@ internal sealed class CommercialPolicy
 
         Status = PolicyStatus.Inactive;
         IsDefault = false;
+        DeactivationReason = deactivationReason;
     }
 
     internal void MarkSubmitted(Guid submissionId)

@@ -3,6 +3,7 @@ using System;
 using LocalizeStay.Modules.Inventory.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
 {
     [DbContext(typeof(InventoryDbContext))]
-    partial class InventoryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260723124101_SyncModelSnapshot")]
+    partial class SyncModelSnapshot
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -240,11 +243,6 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<string>("DeactivationReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("deactivation_reason");
 
                     b.Property<bool>("EverSubmitted")
                         .HasColumnType("boolean")
@@ -492,14 +490,7 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("submitted_by");
 
-                    b.Property<Guid>("ValidationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("validation_id");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("ValidationId")
-                        .HasDatabaseName("ix_offer_submissions_validation_id");
 
                     b.HasIndex("PropertyId", "Revision")
                         .HasDatabaseName("ix_offer_submissions_property_revision");
@@ -511,20 +502,6 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("Comment")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("comment");
-
-                    b.Property<DateTimeOffset?>("InvalidatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("invalidated_at");
-
-                    b.Property<string>("InvalidationReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("invalidation_reason");
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
@@ -1009,12 +986,6 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
                         .WithMany("Submissions")
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferValidation", null)
-                        .WithMany()
-                        .HasForeignKey("ValidationId")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

@@ -30,7 +30,8 @@ internal sealed record UpdateCommercialPolicyCommand(
     Guid PolicyId,
     Guid ReplacementPolicyId,
     int? ExpectedRevision,
-    string Actor) : ICommand<CommercialPolicyResponse>;
+    string Actor,
+    string? DeactivationReason = null) : ICommand<CommercialPolicyResponse>;
 
 internal sealed record DeleteCommercialPolicyCommand(
     Guid PropertyId,
@@ -49,6 +50,7 @@ internal sealed record CommercialPolicyResponse(
     bool IsDefault,
     int UsageCount,
     bool EverSubmitted,
+    string? DeactivationReason,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
@@ -112,6 +114,7 @@ internal sealed class CreateCommercialPolicyCommandHandler(
         policy.IsDefault,
         policy.UsageCount,
         policy.EverSubmitted,
+        policy.DeactivationReason,
         policy.CreatedAt,
         policy.UpdatedAt);
 }
@@ -192,7 +195,7 @@ internal sealed class UpdateCommercialPolicyCommandHandler(
 
         var now = clock.UtcNow;
 
-        offer.DeactivatePolicy(command.PolicyId, command.ReplacementPolicyId, command.Actor, command.ExpectedRevision, now);
+        offer.DeactivatePolicy(command.PolicyId, command.ReplacementPolicyId, command.Actor, command.ExpectedRevision, now, command.DeactivationReason);
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
@@ -226,6 +229,7 @@ internal sealed class UpdateCommercialPolicyCommandHandler(
         policy.IsDefault,
         policy.UsageCount,
         policy.EverSubmitted,
+        policy.DeactivationReason,
         policy.CreatedAt,
         policy.UpdatedAt);
 }
@@ -262,6 +266,7 @@ internal sealed class DeleteCommercialPolicyCommandHandler(
             policy.IsDefault,
             policy.UsageCount,
             policy.EverSubmitted,
+            policy.DeactivationReason,
             policy.CreatedAt,
             policy.UpdatedAt);
 

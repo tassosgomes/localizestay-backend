@@ -170,6 +170,27 @@ internal static class CommercialOfferMapper
 
     internal static StaffActorResponse ToStaffActor(string id, string displayName) => new(id, displayName);
 
+    internal static OfferValidationResponse ToResponse(OfferValidation validation) => new(
+        validation.Id,
+        validation.PropertyId,
+        validation.Revision,
+        ContractValue(validation.Status),
+        ToStaffActor(validation.ValidatedBy, validation.ValidatedBy),
+        validation.ValidatedAt,
+        validation.InvalidatedAt,
+        validation.InvalidationReason,
+        validation.Comment);
+
+    internal static OfferSubmissionResponse ToResponse(OfferSubmission submission) => new(
+        submission.Id,
+        submission.PropertyId,
+        submission.Revision,
+        submission.ValidationId,
+        "accepted",
+        "oferta-inventario.oferta-estruturada",
+        ToStaffActor(submission.SubmittedBy, submission.SubmittedBy),
+        submission.SubmittedAt);
+
     internal static CommercialOfferResponse ToResponse(CommercialOffer offer) => new(
         offer.PropertyId,
         offer.Revision,

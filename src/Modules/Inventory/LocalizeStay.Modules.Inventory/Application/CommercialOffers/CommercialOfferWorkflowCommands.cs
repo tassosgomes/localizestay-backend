@@ -23,9 +23,11 @@ internal sealed class CreateOfferValidationCommandHandler(
     IBusinessAuditWriter auditWriter,
     IClock clock,
     ICorrelationIdAccessor correlationIdAccessor,
-    IValidator<ValidateCommercialOfferCommand> validator) : ICommandHandler<ValidateCommercialOfferCommand, CommercialOfferResponse>
+    IValidator<ValidateCommercialOfferCommand> validator) : ICommandHandler<ValidateCommercialOfferCommand, OfferValidationResponse>
 {
-    public async Task<CommercialOfferResponse> HandleAsync(ValidateCommercialOfferCommand command, CancellationToken cancellationToken)
+    public async Task<OfferValidationResponse> HandleAsync(
+        ValidateCommercialOfferCommand command,
+        CancellationToken cancellationToken)
     {
         await validator.ValidateAndThrowAsync(command, cancellationToken);
 
@@ -37,7 +39,12 @@ internal sealed class CreateOfferValidationCommandHandler(
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
         var now = clock.UtcNow;
-        offer.Validate(command.ValidationId, command.ValidatedBy, command.ExpectedRevision, now);
+        offer.Validate(
+            command.ValidationId,
+            command.ValidatedBy,
+            command.ExpectedRevision,
+            now,
+            command.Comment);
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
@@ -56,7 +63,7 @@ internal sealed class CreateOfferValidationCommandHandler(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         InventoryTelemetry.OfferValidation.Add(1, new KeyValuePair<string, object?>("result", "success"));
-        return CommercialOfferMapper.ToResponse(offer);
+        return CommercialOfferMapper.ToResponse(offer.CurrentValidation!);
     }
 }
 
@@ -65,9 +72,11 @@ internal sealed class SubmitCommercialOfferCommandHandler(
     IBusinessAuditWriter auditWriter,
     IClock clock,
     ICorrelationIdAccessor correlationIdAccessor,
-    IValidator<SubmitCommercialOfferCommand> validator) : ICommandHandler<SubmitCommercialOfferCommand, CommercialOfferResponse>
+    IValidator<SubmitCommercialOfferCommand> validator) : ICommandHandler<SubmitCommercialOfferCommand, OfferSubmissionResponse>
 {
-    public async Task<CommercialOfferResponse> HandleAsync(SubmitCommercialOfferCommand command, CancellationToken cancellationToken)
+    public async Task<OfferSubmissionResponse> HandleAsync(
+        SubmitCommercialOfferCommand command,
+        CancellationToken cancellationToken)
     {
         await validator.ValidateAndThrowAsync(command, cancellationToken);
 
@@ -86,6 +95,11 @@ internal sealed class SubmitCommercialOfferCommandHandler(
         }
 
         var offer = await dbContext.CommercialOffers
+            .Include(o => o.CurrentValidation)
+            .Include(o => o.Accommodations)
+            .Include(o => o.Rates)
+            .Include(o => o.Policies)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(o => o.PropertyId == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
@@ -94,6 +108,7 @@ internal sealed class SubmitCommercialOfferCommandHandler(
 
         var submission = offer.Submit(
             command.SubmissionId,
+            command.ValidationId,
             snapshotJson,
             command.SubmittedBy,
             command.ExpectedRevision,
@@ -164,10 +179,14 @@ internal sealed class SubmitCommercialOfferCommandHandler(
 
         InventoryTelemetry.OfferSubmission.Add(1, new KeyValuePair<string, object?>("result", "success"));
         InventoryTelemetry.OfferSubmissionDuration.Record((now - offer.CreatedAt).TotalSeconds);
-        return CommercialOfferMapper.ToResponse(offer);
+        return CommercialOfferMapper.ToResponse(submission);
     }
 
-    private async Task<CommercialOfferResponse> ReplayAsync(CommercialOfferIdempotencyKey existing, SubmitCommercialOfferCommand command, string fingerprint, CancellationToken cancellationToken)
+    private async Task<OfferSubmissionResponse> ReplayAsync(
+        CommercialOfferIdempotencyKey existing,
+        SubmitCommercialOfferCommand command,
+        string fingerprint,
+        CancellationToken cancellationToken)
     {
         if (existing.Key != command.SubmissionId || existing.Scope != "submission")
             throw new ConflictException("Idempotency key was already used for a different operation.", "STATE_CONFLICT");
@@ -175,12 +194,14 @@ internal sealed class SubmitCommercialOfferCommandHandler(
         if (existing.PayloadFingerprint != fingerprint)
             throw new ConflictException("Idempotency key was already used with a different payload.", "IDEMPOTENCY_KEY_REUSED");
 
-        var offer = await dbContext.CommercialOffers
+        var submission = await dbContext.OfferSubmissions
             .AsNoTracking()
-            .SingleOrDefaultAsync(o => o.PropertyId == command.PropertyId, cancellationToken)
-            ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
+            .SingleOrDefaultAsync(
+                s => s.Id == existing.ResultReferenceId && s.PropertyId == command.PropertyId,
+                cancellationToken)
+            ?? throw new NotFoundException("Commercial offer submission was not found.", "SUBMISSION_NOT_FOUND");
 
-        return CommercialOfferMapper.ToResponse(offer);
+        return CommercialOfferMapper.ToResponse(submission);
     }
 
     private static string ComputeFingerprint(SubmitCommercialOfferCommand command)
@@ -189,8 +210,8 @@ internal sealed class SubmitCommercialOfferCommandHandler(
         {
             command.PropertyId,
             command.SubmissionId,
+            command.ValidationId,
             command.ExpectedRevision,
-            command.SnapshotJson,
         };
 
         var json = JsonSerializer.Serialize(canonicalPayload, CanonicalJsonOptions.Options);
@@ -264,6 +285,7 @@ internal static class CommercialOfferSnapshotSerializer
             revision = offer.Revision,
             revisionAuthor = offer.RevisionAuthor,
             state = offer.State.ToString(),
+            validationId = offer.CurrentValidation?.Id,
             submittedBy,
             submittedAt = now,
             accommodations,
@@ -282,6 +304,7 @@ internal sealed class ValidateCommercialOfferCommandValidator : AbstractValidato
         RuleFor(c => c.ValidationId).NotEmpty();
         RuleFor(c => c.ValidatedBy).NotEmpty().MaximumLength(200);
         RuleFor(c => c.ExpectedRevision).GreaterThan(0);
+        RuleFor(c => c.Comment).MaximumLength(1_000);
     }
 }
 
@@ -291,7 +314,7 @@ internal sealed class SubmitCommercialOfferCommandValidator : AbstractValidator<
     {
         RuleFor(c => c.PropertyId).NotEmpty();
         RuleFor(c => c.SubmissionId).NotEmpty();
-        RuleFor(c => c.SnapshotJson).NotEmpty().MaximumLength(1_000_000);
+        RuleFor(c => c.ValidationId).NotEmpty();
         RuleFor(c => c.SubmittedBy).NotEmpty().MaximumLength(200);
         RuleFor(c => c.ExpectedRevision).GreaterThan(0);
     }
