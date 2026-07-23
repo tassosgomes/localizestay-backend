@@ -4,6 +4,41 @@ Registro estruturado de problemas identificados durante a validação das tarefa
 
 ---
 
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 3.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Edge case ignorado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (escopo — o tratamento de políticas pertence a RF-01, fora desta task)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `MissingPolicy` é inicializado como pending issue na criação (`CommercialOffer.Create`), mas a lista `_pendingIssues` é completamente substituída em toda chamada a `RecalculateCompleteness`. Quando `accommodationCount > 0`, o `CommercialOfferCompleteness.Compute` nunca inclui `MissingPolicy`, fazendo-o desaparecer permanentemente. `HasAnyBlockingIssue(PendingIssueType.MissingPolicy)` retornará `false` mesmo quando política estiver ausente. As operações de política (RF-01, tarefas futuras) precisarão gerenciar esta pending issue ou o `RecalculateCompleteness` precisará aceitar `hasPolicy`.
+
+2. Categoria Técnica: Edge case ignorado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (escopo)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `ExpectNotPublished()` é chamado apenas em `IncrementRevisionMutate`. `Validate`, `Submit` e `RecordReturn` não verificam o estado `Published` — uma oferta publicada rejeitará essas operações com `OFFER_NOT_READY`, `VALIDATION_REQUIRED` ou `OFFER_NOT_SUBMITTED`, em vez do código `PUBLISHED_OFFER_CHANGE_REQUIRES_F04`. Impacto funcional inexistente (os guards de estado bloqueiam), mas inconsistência na mensagem de erro.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum bloqueante)
+Categoria Técnica mais frequente: Edge case ignorado (2)
+Origem mais frequente: Task (escopo)
+Indício de fragilidade estrutural? Não — o agregado é coeso, com 62 testes passando, revisão otimista correta, evidências imutáveis, guard de published e completude com preservação do primeiro instante. As duas observações são não-bloqueantes e pertencem a aspectos tratados em tasks subsequentes.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar o ciclo de vida de `MissingPolicy` como pending issue gerenciada pelo agregado, distinguindo-a das pending issues computadas por `CommercialOfferCompleteness`.
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
 ## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 2.0
 
 Modelo utilizado:
