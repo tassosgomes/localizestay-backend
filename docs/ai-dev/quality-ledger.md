@@ -1461,3 +1461,52 @@ Sugestão de melhoria no:
 - TechSpec: Resolver a questão aberta sobre a origem da faixa etária infantil padrão da propriedade antes da Task 10.0 (API endpoints).
 - Template de Task: N/A
 - Skill: N/A
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 8.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Feature incompleta
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `DualValidationRate` está hardcoded como `1.0` em `GetCommercialOfferMetricsQueryHandler` (linha 626). A métrica de "dupla validação" deveria computar a razão de ofertas validadas por pessoa diferente do autor da revisão, mas o handler retorna uma constante. O response DTO inclui o campo `DualValidationRate` e os testes não validam seu cálculo.
+
+2. Categoria Técnica: Lógica incorreta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `ListCommercialOffersQueryHandler` (linha 62) calcula completude com `100 - o.BlockingIssueCount * 33`, diferente do método `CommercialOfferMapper.CompletenessPercentage` que avalia tipos específicos de pending issues. Resultados podem divergir entre listagem e detalhe.
+
+3. Categoria Técnica: Edge case ignorado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `GetCommercialOfferQueryHandler` não captura `DbUpdateException` em `SaveChangesAsync` para criação idempotente do draft. GETs concorrentes que ambos encontram `offer == null` resultam em um 500 para o perdedor, em vez de recarregar a oferta criada (conforme exigido pela TechSpec: "o perdedor recarrega a oferta criada").
+
+4. Categoria Técnica: Teste inadequado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Nenhum teste cobre a criação concorrente do primeiro draft nem o comportamento do `AddBusinessDays` com edge cases de calendário (feriados, fins de semana) no contexto das métricas. `BusinessCalendarTests` de tasks anteriores cobre o calendário, mas não o fluxo do metrics handler com esses cenários.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4 (nenhum bloqueante)
+Categoria Técnica mais frequente: Feature incompleta / Lógica incorreta / Edge case ignorado / Teste inadequado (1 de cada)
+Origem mais frequente: Limitação do modelo (2)
+Indício de fragilidade estrutural? Não — build 0 erros 0 warnings, 8/8 métricas tests passam, 388/388 unit tests passam, 8 query handlers implementados, 28 DTOs `internal`, 3 validators FluentValidation, `AsNoTracking` em todas as consultas, `AsSplitQuery` para detail, `CancellationToken` propagado, metadata sanitization via whitelist, mapeamento manual sem AutoMapper/Mapster. 2 falhas automatizadas são pré-existentes (architecture test na migration pública e CHARSET em migrations de outros módulos).
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a fórmula exata de `DualValidationRate` e o comportamento de retry do GET concorrente de criação de draft.
+- Template de Task: Exigir teste de concorrência para handlers que criam entidades sob constraint de unicidade.
+- Skill: `dotnet-testing` pode incluir cenário de teste para idempotência concorrente com EF Core.

@@ -56,7 +56,7 @@ Fecha telemetria, documentação e a matriz completa de contrato, persistência,
 - [x] [5.0 Implementar acomodações, ocupação e heranças](5_task.md)
 - [x] [6.0 Implementar tarifas comerciais e períodos](6_task.md)
 - [x] [7.0 Persistir a oferta comercial e executar migration/backfill](7_task.md)
-- [ ] [8.0 Implementar consultas, DTOs, histórico e métricas](8_task.md)
+- [x] [8.0 Implementar consultas, DTOs, histórico e métricas](8_task.md)
 - [ ] [9.0 Implementar validação, submissão, outbox e devolução](9_task.md)
 - [ ] [10.0 Expor e validar as 20 operações Minimal API](10_task.md)
 - [ ] [11.0 Instrumentar, documentar e preparar a operação](11_task.md)
