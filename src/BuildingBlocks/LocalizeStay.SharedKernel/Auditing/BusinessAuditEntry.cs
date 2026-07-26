@@ -20,6 +20,7 @@ public sealed partial class BusinessAuditEntry
     private static readonly IReadOnlySet<string> _approvedMetadataKeys = new HashSet<string>(StringComparer.Ordinal)
     {
         "partnerId",
+        "propertyId",
         "propertyOnboardingId",
         "onboardingId",
         "destinationId",
@@ -31,6 +32,14 @@ public sealed partial class BusinessAuditEntry
         "curationReturnId",
         "communicationChannel",
         "reasonCode",
+        "eventId",
+        "submissionId",
+        "validationId",
+        "policyType",
+        "policyId",
+        "replacementPolicyId",
+        "accommodationId",
+        "rateId",
     };
 
     private const int MaxSummaryLength = 500;

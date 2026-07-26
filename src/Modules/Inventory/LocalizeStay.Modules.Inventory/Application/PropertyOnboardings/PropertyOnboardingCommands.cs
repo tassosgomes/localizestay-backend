@@ -8,6 +8,7 @@ using LocalizeStay.Contracts.Inventory;
 using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Application.Timing;
 using LocalizeStay.Modules.Inventory.Application.Upstream;
+using LocalizeStay.Modules.Inventory.Domain.IncorporatedProperties;
 using LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings;
 using LocalizeStay.Modules.Inventory.Infrastructure;
 using LocalizeStay.SharedKernel.Auditing;
@@ -121,6 +122,23 @@ internal sealed class SubmitToCurationCommandHandler(
         var now = clock.UtcNow;
         try { onboarding.SubmitToCuration(command.IdempotencyKey, command.DecisionNote, now, command.Actor); }
         catch (BusinessRuleViolationException) { InventoryTelemetry.Submitted.Add(1, new KeyValuePair<string, object?>("result", "blocked")); throw; }
+        var incorporated = await dbContext.IncorporatedProperties.FindAsync(new object[] { onboarding.Id }, cancellationToken);
+        if (incorporated is null)
+        {
+            incorporated = IncorporatedProperty.Create(
+                onboarding.Id,
+                onboarding.PartnerId,
+                onboarding.Property.Name,
+                onboarding.Property.DestinationId,
+                command.Actor,
+                now);
+            await dbContext.IncorporatedProperties.AddAsync(incorporated, cancellationToken);
+            auditWriter.Record(BusinessAuditEntry.Create("IncorporatedProperty", incorporated.Id.ToString(), command.Actor, "IncorporatedPropertyMaterialized", "Property materialized from onboarding submission.", now, correlationIdAccessor.CorrelationId, new Dictionary<string, string> { ["propertyId"] = incorporated.Id.ToString(), ["onboardingId"] = onboarding.Id.ToString(), ["destinationId"] = onboarding.Property.DestinationId }));
+        }
+        else
+        {
+            incorporated.Sync(onboarding.Property.Name, onboarding.Property.DestinationId, now);
+        }
         var contract = onboarding.ReadinessGates.Single(gate => gate.Type == ReadinessGateType.SignedContract).ContractReference!;
         var integrationEvent = new InventoryPropertyOnboardedV1 { OnboardingId = onboarding.Id, PartnerId = onboarding.PartnerId, DestinationId = onboarding.Property.DestinationId, ContractRepositoryReference = contract.RepositoryReference, SubmittedAt = now, OccurredOnUtc = now, CorrelationId = command.IdempotencyKey.ToString(), CausationId = command.IdempotencyKey.ToString() };
         await dbContext.IdempotencyKeys.AddAsync(IdempotencyKey.Create(onboarding.Id, command.IdempotencyKey, IdempotencyScope.SubmitToCuration, now, fingerprint), cancellationToken);

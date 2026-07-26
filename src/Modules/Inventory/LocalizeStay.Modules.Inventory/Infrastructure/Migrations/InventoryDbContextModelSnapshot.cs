@@ -23,6 +23,588 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.Accommodation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ChildAgeRangeSource")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("child_age_range_source");
+
+                    b.Property<int?>("ChildMaximumAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("child_maximum_age");
+
+                    b.Property<int?>("ChildMinimumAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("child_minimum_age");
+
+                    b.Property<string>("CommercialName")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)")
+                        .HasColumnName("commercial_name");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("deactivation_reason");
+
+                    b.Property<bool>("EverSubmitted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ever_submitted");
+
+                    b.Property<int?>("MaxAdults")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_adults");
+
+                    b.Property<int?>("MaxChildren")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_children");
+
+                    b.Property<string>("MealPlan")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("meal_plan");
+
+                    b.Property<Guid?>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("TotalCapacity")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_capacity");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("_bedConfiguration")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("bed_configuration");
+
+                    b.Property<string>("_structuralFeatures")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("structural_features");
+
+                    b.Property<string>("_submissionIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("submission_ids");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "Status")
+                        .HasDatabaseName("ix_accommodations_property_status");
+
+                    b.ToTable("accommodations", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AccommodationCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("accommodation_count");
+
+                    b.Property<int>("BlockingIssueCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("blocking_issue_count");
+
+                    b.Property<DateTimeOffset?>("CompleteInformationReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("complete_information_received_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CurrentValidationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("RevisionAuthor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("revision_author");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("state");
+
+                    b.Property<DateTimeOffset?>("TargetSubmissionAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("target_submission_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("_pendingIssues")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("pending_issues");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentValidationId")
+                        .IsUnique();
+
+                    b.HasIndex("State")
+                        .HasDatabaseName("ix_commercial_offers_state");
+
+                    b.HasIndex("State", "TargetSubmissionAt")
+                        .HasDatabaseName("ix_commercial_offers_state_target_submission");
+
+                    b.ToTable("commercial_offers", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOfferIdempotencyKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("Key")
+                        .HasColumnType("uuid")
+                        .HasColumnName("key");
+
+                    b.Property<string>("PayloadFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_fingerprint");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<Guid?>("ResultReferenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_reference_id");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("scope");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "Key", "Scope")
+                        .IsUnique()
+                        .HasDatabaseName("ix_commercial_offer_idempotency_keys_property_key_scope");
+
+                    b.ToTable("commercial_offer_idempotency_keys", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("deactivation_reason");
+
+                    b.Property<bool>("EverSubmitted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ever_submitted");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("RuleSetVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("rule_set_version");
+
+                    b.Property<string>("RulesSummary")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("rules_summary");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("UsageCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("usage_count");
+
+                    b.Property<string>("_submissionIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("submission_ids");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "Type", "Status")
+                        .HasDatabaseName("ix_commercial_policies_property_type_status");
+
+                    b.ToTable("commercial_policies", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialRate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccommodationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("accommodation_id");
+
+                    b.Property<long?>("AdditionalAdultPriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("additional_adult_price_cents");
+
+                    b.Property<long?>("AdditionalChildPriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("additional_child_price_cents");
+
+                    b.Property<long?>("BasePriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("base_price_cents");
+
+                    b.Property<string>("ConditionCode")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("condition_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("deactivation_reason");
+
+                    b.Property<bool>("EverSubmitted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ever_submitted");
+
+                    b.Property<int?>("IncludedGuests")
+                        .HasColumnType("integer")
+                        .HasColumnName("included_guests");
+
+                    b.Property<string>("MealPlan")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("meal_plan");
+
+                    b.Property<int?>("MinimumNights")
+                        .HasColumnType("integer")
+                        .HasColumnName("minimum_nights");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateOnly?>("ValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_to");
+
+                    b.Property<string>("_submissionIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("submission_ids");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccommodationId")
+                        .HasDatabaseName("ix_commercial_rates_accommodation");
+
+                    b.HasIndex("PropertyId", "Status")
+                        .HasDatabaseName("ix_commercial_rates_property_status");
+
+                    b.HasIndex("AccommodationId", "ConditionCode", "PolicyId", "MealPlan", "ValidFrom", "ValidTo")
+                        .HasDatabaseName("ix_commercial_rates_overlap");
+
+                    b.ToTable("commercial_rates", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferReturn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("reason_code");
+
+                    b.Property<DateTimeOffset>("ReturnedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("returned_at");
+
+                    b.Property<string>("ReturnedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("returned_by");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "SubmissionId")
+                        .HasDatabaseName("ix_offer_returns_property_submission");
+
+                    b.ToTable("offer_returns", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("snapshot_json");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<string>("SubmittedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("submitted_by");
+
+                    b.Property<Guid>("ValidationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("validation_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ValidationId")
+                        .HasDatabaseName("ix_offer_submissions_validation_id");
+
+                    b.HasIndex("PropertyId", "Revision")
+                        .HasDatabaseName("ix_offer_submissions_property_revision");
+
+                    b.ToTable("offer_submissions", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferValidation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset?>("InvalidatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invalidated_at");
+
+                    b.Property<string>("InvalidationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("invalidation_reason");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("ValidatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("validated_at");
+
+                    b.Property<string>("ValidatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("validated_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "Revision")
+                        .HasDatabaseName("ix_offer_validations_property_revision");
+
+                    b.ToTable("offer_validations", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.IncorporatedProperties.IncorporatedProperty", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DestinationId")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("destination_id");
+
+                    b.Property<string>("InitialActor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("initial_actor");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("onboarding_id");
+
+                    b.Property<Guid>("PartnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PropertyName")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)")
+                        .HasColumnName("property_name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_incorporated_properties_onboarding_id_unique");
+
+                    b.ToTable("incorporated_properties", "inventory");
+                });
+
             modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.Partners.Partner", b =>
                 {
                     b.Property<Guid>("Id")
@@ -357,6 +939,83 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
                     b.HasIndex("ProcessedOnUtc", "OccurredOnUtc");
 
                     b.ToTable("outbox_messages", "inventory");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.Accommodation", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", null)
+                        .WithMany("Accommodations")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferValidation", "CurrentValidation")
+                        .WithOne()
+                        .HasForeignKey("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", "CurrentValidationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.IncorporatedProperties.IncorporatedProperty", null)
+                        .WithOne()
+                        .HasForeignKey("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CurrentValidation");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOfferIdempotencyKey", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_commercial_offer_idempotency_keys_offer_id");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialPolicy", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", null)
+                        .WithMany("Policies")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialRate", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", null)
+                        .WithMany("Rates")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferReturn", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", null)
+                        .WithMany("Returns")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferSubmission", b =>
+                {
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", null)
+                        .WithMany("Submissions")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.OfferValidation", null)
+                        .WithMany()
+                        .HasForeignKey("ValidationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.Partners.Partner", b =>
@@ -843,6 +1502,19 @@ namespace LocalizeStay.Modules.Inventory.Infrastructure.Migrations
                     b.Navigation("ContractReference");
 
                     b.Navigation("Evidence");
+                });
+
+            modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.CommercialOffers.CommercialOffer", b =>
+                {
+                    b.Navigation("Accommodations");
+
+                    b.Navigation("Policies");
+
+                    b.Navigation("Rates");
+
+                    b.Navigation("Returns");
+
+                    b.Navigation("Submissions");
                 });
 
             modelBuilder.Entity("LocalizeStay.Modules.Inventory.Domain.PropertyOnboardings.PropertyOnboarding", b =>

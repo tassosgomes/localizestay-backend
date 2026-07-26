@@ -105,6 +105,10 @@ curl http://localhost:5080/health/ready
 curl http://localhost:5080/api/inventory/status
 ```
 
+Na inicialização, a API aplica automaticamente as migrations de cada módulo antes de iniciar os
+processadores de outbox. Em um banco vazio, aguarde o log de migrações concluídas antes de usar os
+endpoints.
+
 A connection string padrão (`appsettings.json`, chave `ConnectionStrings:LocalizeStay`) aponta para o
 Postgres do `docker-compose.dev.yml`. OpenTelemetry só exporta via OTLP se
 `OpenTelemetry:OtlpEndpoint` estiver configurado; sem isso, a aplicação roda normalmente sem exportar
@@ -133,6 +137,44 @@ dotnet test tests/LocalizeStay.IntegrationTests --filter "FullyQualifiedName~Por
 As variáveis não secretas, migration/rollback, smoke tests, telemetria e bloqueios externos de aceite
 estão no [runbook de Portfolio Onboarding](docs/runbooks/portfolio-onboarding.md). Não há automação de
 WhatsApp ou e-mail: a API registra somente o resultado que a equipe processou.
+
+### Certificação F02 — estruturação de acomodações, tarifas e políticas comerciais
+
+A F02 estende o módulo Inventory para estruturar a oferta comercial de uma propriedade
+incorporada: acomodações, políticas comerciais ( cancellation/no-show/deposit/guarantee ),
+tarifas, validação independente por um segundo operador, submissão idempotente à Curadoria,
+devolução e reenvio. O contrato soberano é
+`.tasks/prd-estruturar-acomodacoes-tarifas-e-politicas/api-contract.yaml`.
+
+```bash
+dotnet test tests/LocalizeStay.IntegrationTests --filter "FullyQualifiedName~CommercialOfferEndpointsTests"
+dotnet test tests/LocalizeStay.IntegrationTests --filter "FullyQualifiedName~CommercialOfferPersistenceTests"
+dotnet test tests/LocalizeStay.IntegrationTests --filter "FullyQualifiedName~CommercialOfferObservabilityTests"
+dotnet test tests/LocalizeStay.UnitTests --filter "FullyQualifiedName~CommercialOffer"
+```
+
+A suíte valida as 20 operações HTTP, a migration/backfill contra PostgreSQL via Testcontainers, a
+idempotência de submissão, a deduplicação de devolução por `event_id`, as invariáveis de domínio
+(revisão como concurrency token, overlap de tarifas, dupla validação por operador diferente do
+autor) e a instrumentação OpenTelemetry da F02.
+
+#### Configuração jurídica
+
+Cada tipo de política comercial carrega um `ruleSetVersion` versionado e aprovado pelo time
+Jurídico. O catálogo (`ILegalPolicyCatalog`) é validado no startup: a aplicação falha cedo se uma
+versão aprovada não estiver configurada. As variáveis não secretas são:
+
+| Setting | Política |
+| --- | --- |
+| `LegalPolicies__Cancellation__RuleSetVersion` | Cancelamento |
+| `LegalPolicies__NoShow__RuleSetVersion` | No-show |
+| `LegalPolicies__Deposit__RuleSetVersion` | Depósito |
+| `LegalPolicies__Guarantee__RuleSetVersion` | Garantia |
+
+Texto jurídico, snapshots de submissão, preços completos, comentários de validação, tokens e PII
+nunca aparecem em templates de log — apenas `propertyId`, `offerRevision`, `operation`, `result`,
+`validationId`, `submissionId`, `eventId` e `correlationId` (ver
+[runbook da F02](docs/runbooks/commercial-offers.md)).
 
 ## Como os testes de arquitetura protegem as fronteiras
 

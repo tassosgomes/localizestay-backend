@@ -1,4 +1,5 @@
 using FluentValidation;
+using LocalizeStay.Modules.Inventory.Application.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Application.Partners;
 using LocalizeStay.Modules.Inventory.Application.PropertyOnboardings;
 
@@ -260,6 +261,235 @@ internal sealed class ClosePropertyOnboardingCommandValidator : AbstractValidato
         RuleFor(command => command.OnboardingId).NotEmpty();
         RuleFor(command => command.ReasonCode).Must(value => new[] { "partnerWithdrawal", "eligibilityFailure", "noResponse", "duplicateProperty", "commercialDecision", "other" }.Contains(value, StringComparer.OrdinalIgnoreCase));
         RuleFor(command => command.Reason).NotEmpty().Length(10, 1000);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateCommercialPolicyCommandValidator : AbstractValidator<CreateCommercialPolicyCommand>
+{
+    public CreateCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyType)
+            .Must(value => new[] { "flexible", "nonRefundable" }.Contains(value, StringComparer.OrdinalIgnoreCase))
+            .WithErrorCode("INVALID_POLICY_TYPE");
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class SetDefaultCommercialPolicyCommandValidator : AbstractValidator<SetDefaultCommercialPolicyCommand>
+{
+    public SetDefaultCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class UpdateCommercialPolicyCommandValidator : AbstractValidator<UpdateCommercialPolicyCommand>
+{
+    public UpdateCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyId).NotEmpty();
+        RuleFor(command => command.ReplacementPolicyId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class DeleteCommercialPolicyCommandValidator : AbstractValidator<DeleteCommercialPolicyCommand>
+{
+    public DeleteCommercialPolicyCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.PolicyId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateAccommodationCommandValidator : AbstractValidator<CreateAccommodationCommand>
+{
+    private static readonly string[] _mealPlans = ["none", "breakfast", "halfBoard", "fullBoard"];
+
+    public CreateAccommodationCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.CommercialName).NotEmpty().Length(2, 180);
+        RuleFor(command => command.MealPlan)
+            .Must(value => value is null || _mealPlans.Contains(value, StringComparer.OrdinalIgnoreCase))
+            .WithErrorCode("INVALID_MEAL_PLAN");
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+        RuleForEach(command => command.BedConfiguration).ChildRules(bed =>
+        {
+            bed.RuleFor(b => b.BedType)
+                .Must(value => value is not null && Enum.TryParse<Domain.CommercialOffers.BedType>(value, true, out _))
+                .WithErrorCode("INVALID_BED_TYPE");
+            bed.RuleFor(b => b.Count).GreaterThan(0).WithErrorCode("INVALID_BED_COUNT");
+        }).When(command => command.BedConfiguration is not null);
+        RuleFor(command => command.ChildAgeRange!.MinimumAge)
+            .GreaterThanOrEqualTo(0)
+            .LessThanOrEqualTo(17)
+            .When(command => command.ChildAgeRange?.MinimumAge is not null);
+        RuleFor(command => command.ChildAgeRange!.MaximumAge)
+            .GreaterThanOrEqualTo(0)
+            .LessThanOrEqualTo(17)
+            .When(command => command.ChildAgeRange?.MaximumAge is not null);
+    }
+}
+
+internal sealed class UpdateAccommodationCommandValidator : AbstractValidator<UpdateAccommodationCommand>
+{
+    private static readonly string[] _mealPlans = ["none", "breakfast", "halfBoard", "fullBoard"];
+
+    public UpdateAccommodationCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.AccommodationId).NotEmpty();
+        RuleFor(command => command)
+            .Must(command => command.HasCommercialName || command.HasMaxAdults || command.HasMaxChildren
+                || command.HasTotalCapacity || command.HasMealPlan || command.HasBedConfiguration
+                || command.HasStructuralFeatures || command.HasPolicyId || command.ChildAgeRange is not null)
+            .WithMessage("At least one field must be supplied.");
+        RuleFor(command => command.CommercialName).Length(2, 180).When(command => command.HasCommercialName && command.CommercialName is not null);
+        RuleFor(command => command.MealPlan)
+            .Must(value => value is null || _mealPlans.Contains(value, StringComparer.OrdinalIgnoreCase))
+            .When(command => command.HasMealPlan)
+            .WithErrorCode("INVALID_MEAL_PLAN");
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+        RuleForEach(command => command.BedConfiguration).ChildRules(bed =>
+        {
+            bed.RuleFor(b => b.BedType)
+                .Must(value => value is not null && Enum.TryParse<Domain.CommercialOffers.BedType>(value, true, out _))
+                .WithErrorCode("INVALID_BED_TYPE");
+            bed.RuleFor(b => b.Count).GreaterThan(0).WithErrorCode("INVALID_BED_COUNT");
+        }).When(command => command.HasBedConfiguration && command.BedConfiguration is not null);
+        RuleFor(command => command.ChildAgeRange!.MinimumAge)
+            .GreaterThanOrEqualTo(0)
+            .LessThanOrEqualTo(17)
+            .When(command => command.ChildAgeRange is not null && !command.ChildAgeRange.IsNull && command.ChildAgeRange.MinimumAge is not null);
+        RuleFor(command => command.ChildAgeRange!.MaximumAge)
+            .GreaterThanOrEqualTo(0)
+            .LessThanOrEqualTo(17)
+            .When(command => command.ChildAgeRange is not null && !command.ChildAgeRange.IsNull && command.ChildAgeRange.MaximumAge is not null);
+    }
+}
+
+internal sealed class DeleteAccommodationCommandValidator : AbstractValidator<DeleteAccommodationCommand>
+{
+    public DeleteAccommodationCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.AccommodationId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class CreateCommercialRateCommandValidator : AbstractValidator<CreateCommercialRateCommand>
+{
+    private static readonly string[] _mealPlans = ["roomOnly", "breakfast", "halfBoard", "fullBoard"];
+
+    public CreateCommercialRateCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.AccommodationId).NotEmpty();
+        RuleFor(command => command.Name).NotEmpty().Length(2, 120);
+        RuleFor(command => command.ConditionCode)
+            .NotEmpty()
+            .Matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+            .MaximumLength(60)
+            .WithErrorCode("INVALID_CONDITION_CODE");
+        RuleFor(command => command.BasePriceCents)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.BasePriceCents.HasValue);
+        RuleFor(command => command.IncludedGuests)
+            .InclusiveBetween(1, 30)
+            .When(command => command.IncludedGuests.HasValue);
+        RuleFor(command => command.AdditionalAdultPriceCents)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.AdditionalAdultPriceCents.HasValue);
+        RuleFor(command => command.AdditionalChildPriceCents)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.AdditionalChildPriceCents.HasValue);
+        RuleFor(command => command.MinimumNights)
+            .InclusiveBetween(1, 365)
+            .When(command => command.MinimumNights.HasValue);
+        RuleFor(command => command)
+            .Must(command => !command.ValidFrom.HasValue || !command.ValidTo.HasValue || command.ValidTo.Value >= command.ValidFrom.Value)
+            .When(command => command.ValidFrom.HasValue || command.ValidTo.HasValue)
+            .WithMessage("ValidTo must not be earlier than ValidFrom.")
+            .WithErrorCode("INVALID_RATE_PERIOD");
+        RuleFor(command => command.MealPlan)
+            .Must(value => value is null || _mealPlans.Contains(value, StringComparer.OrdinalIgnoreCase))
+            .WithErrorCode("INVALID_MEAL_PLAN");
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class UpdateCommercialRateCommandValidator : AbstractValidator<UpdateCommercialRateCommand>
+{
+    private static readonly string[] _mealPlans = ["roomOnly", "breakfast", "halfBoard", "fullBoard"];
+
+    public UpdateCommercialRateCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.AccommodationId).NotEmpty();
+        RuleFor(command => command.RateId).NotEmpty();
+        RuleFor(command => command)
+            .Must(command => command.HasName || command.HasConditionCode || command.HasBasePriceCents
+                || command.HasIncludedGuests || command.HasAdditionalAdultPriceCents || command.HasAdditionalChildPriceCents
+                || command.HasValidFrom || command.HasValidTo || command.HasMinimumNights
+                || command.HasPolicyId || command.HasMealPlan || command.HasDeactivationReason)
+            .WithMessage("At least one field must be supplied.");
+        RuleFor(command => command.Name).Length(2, 120).When(command => command.HasName && command.Name is not null);
+        RuleFor(command => command.ConditionCode)
+            .Matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+            .MaximumLength(60)
+            .When(command => command.HasConditionCode && command.ConditionCode is not null)
+            .WithErrorCode("INVALID_CONDITION_CODE");
+        RuleFor(command => command.BasePriceCents)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.HasBasePriceCents);
+        RuleFor(command => command.IncludedGuests)
+            .InclusiveBetween(1, 30)
+            .When(command => command.HasIncludedGuests);
+        RuleFor(command => command.AdditionalAdultPriceCents)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.HasAdditionalAdultPriceCents && command.AdditionalAdultPriceCents.HasValue);
+        RuleFor(command => command.AdditionalChildPriceCents)
+            .GreaterThanOrEqualTo(0)
+            .When(command => command.HasAdditionalChildPriceCents && command.AdditionalChildPriceCents.HasValue);
+        RuleFor(command => command.MinimumNights)
+            .InclusiveBetween(1, 365)
+            .When(command => command.HasMinimumNights);
+        RuleFor(command => command.MealPlan)
+            .Must(value => value is null || _mealPlans.Contains(value, StringComparer.OrdinalIgnoreCase))
+            .When(command => command.HasMealPlan)
+            .WithErrorCode("INVALID_MEAL_PLAN");
+        RuleFor(command => command.DeactivationReason)
+            .Length(3, 500)
+            .When(command => command.HasDeactivationReason && command.DeactivationReason is not null);
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
+        RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
+    }
+}
+
+internal sealed class DeleteCommercialRateCommandValidator : AbstractValidator<DeleteCommercialRateCommand>
+{
+    public DeleteCommercialRateCommandValidator()
+    {
+        RuleFor(command => command.PropertyId).NotEmpty();
+        RuleFor(command => command.AccommodationId).NotEmpty();
+        RuleFor(command => command.RateId).NotEmpty();
+        RuleFor(command => command.ExpectedRevision).GreaterThan(0).When(command => command.ExpectedRevision.HasValue);
         RuleFor(command => command.Actor).NotEmpty().MaximumLength(200);
     }
 }

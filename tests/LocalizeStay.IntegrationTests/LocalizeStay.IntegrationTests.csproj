@@ -34,6 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\LocalizeStay.Api\LocalizeStay.Api.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\LocalizeStay.SharedKernel\LocalizeStay.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Curation\LocalizeStay.Modules.Curation.Contracts\LocalizeStay.Modules.Curation.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

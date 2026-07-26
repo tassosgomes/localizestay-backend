@@ -14,6 +14,8 @@ using LocalizeStay.SharedKernel.Modules;
 using LocalizeStay.SharedKernel.Observability;
 using LocalizeStay.SharedKernel.Security;
 
+const string DevelopmentCorsPolicy = "DevelopmentCors";
+
 var builder = WebApplication.CreateBuilder(args);
 
 // The host is the only place that knows about every module's concrete type. It orchestrates
@@ -41,6 +43,14 @@ builder.Services.AddLocalizeStaySecurity(builder.Configuration);
 builder.Services.AddLocalizeStayRateLimiter(builder.Configuration);
 builder.Services.AddLocalizeStayModules(builder.Configuration, modules);
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddCors(options => options.AddPolicy(DevelopmentCorsPolicy, policy => policy
+        .WithOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:5175")
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
+}
+
 var app = builder.Build();
 
 // Pipeline order is deliberate: exception handler wraps everything so no response leaks stack
@@ -48,6 +58,12 @@ var app = builder.Build();
 // every protected route is authenticated and throttled uniformly (restful-api + production-readiness).
 app.UseExceptionHandler();
 app.UseCorrelationId();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(DevelopmentCorsPolicy);
+}
+
 app.UseLocalizeStaySecurity();
 app.UseRateLimiter();
 

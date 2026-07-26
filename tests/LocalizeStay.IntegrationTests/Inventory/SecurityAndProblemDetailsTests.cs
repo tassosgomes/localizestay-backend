@@ -88,6 +88,93 @@ public sealed class SecurityAndProblemDetailsTests : IClassFixture<LocalizeStayW
     }
 
     [Fact]
+    public async Task ProtectedEndpoint_WithOnlyCommercialOfferPermission_DeniedByDefault_Returns403()
+    {
+        // Arrange: token carries staff scope and commercial-offers:read but NOT portfolio-onboarding:read.
+        var token = LocalizeStayWebApplicationFactory.CreateToken(
+            "logto|staff-0193",
+            CommercialOfferPermissions.Read);
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        var response = await _client.GetAsync("/api/v1/test/scenarios/ok");
+
+        // Assert: portfolio-onboarding endpoint is denied when the token only has commercial-offer permission.
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+        problem.GetProperty("status").GetInt32().Should().Be(403);
+        problem.GetProperty("code").GetString().Should().Be("FORBIDDEN");
+        problem.TryGetProperty("traceId", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProtectedEndpoint_WithAllCommercialOfferPermissions_DeniedByDefault_Returns403()
+    {
+        // Arrange: token carries staff scope and all commercial-offer permissions but none from portfolio-onboarding.
+        var token = LocalizeStayWebApplicationFactory.CreateToken(
+            "logto|f02-staff-001",
+            CommercialOfferPermissions.Read,
+            CommercialOfferPermissions.Write,
+            CommercialOfferPermissions.Review,
+            CommercialOfferPermissions.Metrics);
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        var response = await _client.GetAsync("/api/v1/test/scenarios/ok");
+
+        // Assert: even with full F02 permissions, F01-protected endpoints remain denied by default.
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+        problem.GetProperty("status").GetInt32().Should().Be(403);
+        problem.GetProperty("code").GetString().Should().Be("FORBIDDEN");
+        problem.TryGetProperty("traceId", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ProtectedEndpoint_WithOnlyReviewPermission_Returns403()
+    {
+        // Arrange
+        var token = LocalizeStayWebApplicationFactory.CreateToken(
+            "logto|reviewer-001",
+            CommercialOfferPermissions.Review);
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        var response = await _client.GetAsync("/api/v1/test/scenarios/ok");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+        problem.GetProperty("status").GetInt32().Should().Be(403);
+        problem.GetProperty("code").GetString().Should().Be("FORBIDDEN");
+    }
+
+    [Fact]
+    public async Task ProtectedEndpoint_WithOnlyMetricsPermission_Returns403()
+    {
+        // Arrange
+        var token = LocalizeStayWebApplicationFactory.CreateToken(
+            "logto|metrics-001",
+            CommercialOfferPermissions.Metrics);
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        var response = await _client.GetAsync("/api/v1/test/scenarios/ok");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions);
+        problem.GetProperty("status").GetInt32().Should().Be(403);
+        problem.GetProperty("code").GetString().Should().Be("FORBIDDEN");
+    }
+
+    [Fact]
     public async Task NotFoundScenario_Returns404WithContractCodeAndInstance()
     {
         // Arrange

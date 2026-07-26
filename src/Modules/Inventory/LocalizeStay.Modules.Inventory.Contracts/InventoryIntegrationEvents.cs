@@ -13,3 +13,16 @@ public sealed record InventoryPropertyOnboardedV1 : IntegrationEvent
     public required string ContractRepositoryReference { get; init; }
     public required DateTimeOffset SubmittedAt { get; init; }
 }
+
+/// <summary>Version 1 of the fact that a Commercial Offer was structured and submitted for curation review.</summary>
+public sealed record InventoryCommercialOfferStructuredV1 : IntegrationEvent
+{
+    public const string EventType = "oferta-inventario.oferta-estruturada";
+
+    public required Guid PropertyId { get; init; }
+    public required Guid SubmissionId { get; init; }
+    public required int RevisionAtSubmission { get; init; }
+    public required string SnapshotJson { get; init; }
+    public required string SubmittedBy { get; init; }
+    public required DateTimeOffset SubmittedAt { get; init; }
+}

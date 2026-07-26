@@ -72,6 +72,7 @@ public sealed class LocalizeStayWebApplicationFactory : WebApplicationFactory<Pr
                     {
                         Issuer = TestIssuer,
                     };
+                    options.MapInboundClaims = false;
                     options.TokenValidationParameters = new TokenValidationParameters
                     {
                         ValidIssuer = TestIssuer,
@@ -85,6 +86,7 @@ public sealed class LocalizeStayWebApplicationFactory : WebApplicationFactory<Pr
                         ClockSkew = TimeSpan.FromMinutes(1),
                         IssuerSigningKey = SigningKey,
                         NameClaimType = "sub",
+                        RoleClaimType = "permission",
                     };
                 });
         });
@@ -114,9 +116,9 @@ public sealed class LocalizeStayWebApplicationFactory : WebApplicationFactory<Pr
             new("sub", subject),
             new("scope", "staff"),
         };
-        foreach (var permission in permissions)
+        if (permissions.Length > 0)
         {
-            claims.Add(new Claim("permission", permission));
+            claims.Add(new Claim("permission", string.Join(" ", permissions)));
         }
 
         var now = DateTimeOffset.UtcNow;

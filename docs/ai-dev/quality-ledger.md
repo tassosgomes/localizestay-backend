@@ -2,6 +2,241 @@
 
 Registro estruturado de problemas identificados durante a validação das tarefas do AI Flow.
 
+> **A partir de 2026-07-26 este arquivo guarda apenas prosa acionável.**
+> A telemetria categórica (categoria, severidade, fase, origem, iteração) passou a ser
+> gravada em `quality-ledger.jsonl`, um registro por finding, para ser agregável sem
+> custo de leitura. Este `.md` agora recebe entrada **somente** quando um finding
+> bloqueante tem origem em artefato de planejamento (`Task mal fragmentada`,
+> `Lacuna na TechSpec`, `Ambiguidade no PRD`) — os casos que exigem uma sugestão
+> humana de melhoria no PRD, TechSpec, template de task ou skill.
+> O conteúdo abaixo desta nota é o histórico no formato antigo e permanece como arquivo.
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 7.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Teste
+   Origem Provável: Modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `OfferSubmission_SnapshotJson_PersistsAsJsonb` compara strings JSON com `Should().Be()` após round-trip pelo PostgreSQL jsonb. O PostgreSQL normaliza a ordenação de chaves, resultando em falha: o esperado é `{"accommodations":3,"policies":2}` e o retornado é `{"policies": 2, "accommodations": 3}`. O teste deve desserializar ambos os valores e comparar objetos, não strings.
+
+2. Categoria Técnica: Falha de validação
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task (subtarefa 7.3)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A subtarefa 7.3 exige traduzir `DbUpdateConcurrencyException` para `REVISION_MISMATCH`. O concurrency token em `Revision` está configurado (`IsConcurrencyToken()`), e o domínio lança `REVISION_MISMATCH` em verificações explícitas. Porém, `DbUpdateConcurrencyException` não é capturado em nenhum `SaveChangesAsync` — não há `try-catch` nos handlers, interceptor, middleware, ou override no DbContext. Busca por `DbUpdateConcurrencyException` no codebase retorna zero resultados.
+
+3. Categoria Técnica: Feature incompleta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec / Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Índice `commercial_offers(property_id)` exigido pela task e techspec não foi criado como índice explícito na migration. A tabela tem colunas separadas `Id` (PK) e `property_id`. Embora o domínio sempre defina `Id == PropertyId`, consultas `WHERE property_id = @p0` não usam o índice PK (que é em `Id`).
+
+4. Categoria Técnica: Teste inadequado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `Backfill_IncorporatedProperties_IsIdempotent` cria manualmente um `IncorporatedProperty` e conta registros, mas não executa o SQL de backfill da migration nem verifica que rodá-lo duas vezes não duplica registros. O SQL de backfill está correto (`ON CONFLICT DO NOTHING`), mas o teste não comprova a idempotência do backfill.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4 (nenhum bloqueante)
+Categoria Técnica mais frequente: Teste inadequado (2)
+Origem mais frequente: Task (2)
+Indício de fragilidade estrutural? Não — build 0 erros 0 warnings, 380 unit tests passam, 8/9 persistence tests passam (1 falha por comparação de string, não por lógica). 9 EF configurations, 9 DbSets, migration com 9 tabelas, 12 índices, 1 UNIQUE constraint, JSONB com ValueComparer, tipos corretos (long centavos, DateOnly, DateTimeOffset), backfill idempotente, FKs internas ao schema inventory. As issues são pontuais e não exigem reimplementação significativa.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar o ponto exato da tradução de `DbUpdateConcurrencyException` (ex: override de `SaveChangesAsync` no DbContext, interceptor EF, ou `try-catch` nos handlers) para evitar ambiguidade sobre onde a responsabilidade reside.
+- Template de Task: Incluir nota sobre comparação de JSONB: strings serializadas podem divergir em ordenação de chaves após round-trip no PostgreSQL; usar `JToken.DeepEquals()` ou `JsonElement` comparison.
+- Skill: `dotnet-dependency-config` pode incluir padrão para tradução de `DbUpdateConcurrencyException` em DbContexts que usam concurrency tokens.
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 6.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Erro de integração
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Task / Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: O API Contract define `MealPlan` como `[roomOnly, breakfast, halfBoard, fullBoard]` e o validator aceita `"roomOnly"`, mas o enum de domínio `MealPlan` tem `None` (não `RoomOnly`). O handler usa `Enum.Parse<MealPlan>(command.MealPlan, true)`, que lança `ArgumentException` para `"roomOnly"` — falha de runtime para um valor válido do contrato. Correção: renomear `None` → `RoomOnly` no enum de domínio (`CommercialOfferValues.cs:56`), já que `null` (via `MealPlan?`) já representa "não especificado".
+
+2. Categoria Técnica: Teste inadequado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O teste `Rate_MandatoryFeesIncluded_AlwaysTrue` apenas verifica `IsComplete()` em vez de testar a invariante `mandatoryFeesIncluded`. A entidade `CommercialRate` não possui campo `mandatoryFeesIncluded` nem `currency`; embora a task declare que são "invariantes do servidor", o teste não comprova nenhuma invariante real.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (1 bloqueante)
+Categoria Técnica mais frequente: Erro de integração / Teste inadequado (1 de cada)
+Origem mais frequente: Task (2)
+Indício de fragilidade estrutural? Não — build 0 erros 0 warnings, 52 testes passam, 380 unit tests passam, 27 architecture tests passam, encapsulamento `internal` mantido, overlap detection correto, EF config com índices apropriados, CQRS nativo, FluentValidation nos 3 commands, Completeness integrado. Apenas o mismatch de enum entre contrato e domínio precisa de correção mecânica.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a correspondência exata entre os valores do API Contract (camelCase) e os nomes do enum de domínio (PascalCase) para cada enum exposto.
+- Template de Task: N/A
+- Skill: `dotnet-code-quality` pode incluir verificação de que `Enum.Parse` deve ter correspondência exata com os valores do contrato OpenAPI.
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 6.0 (Revalidação)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
+
+### Resumo da Tarefa
+
+Total de Problemas: 0 (Issue 1 bloqueante da iteração anterior resolvido; Issue 2 não bloqueante persiste como observação)
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — a correção `MealPlan.None → MealPlan.RoomOnly` alinha o enum de domínio com os valores do API Contract (`roomOnly, breakfast, halfBoard, fullBoard`). `Enum.Parse<MealPlan>("roomOnly", true)` agora resolve corretamente via case-insensitive match. Zero referências a `MealPlan.None` no codebase. Build 0 erros 0 warnings, 52 CommercialRateTests passam, 380 UnitTests passam. A observação não bloqueante (teste `Rate_MandatoryFeesIncluded_AlwaysTrue` com nome enganoso) permanece para melhoria futura.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a correspondência exata entre os valores do API Contract (camelCase) e os nomes do enum de domínio (PascalCase) para cada enum exposto.
+- Template de Task: N/A
+- Skill: `dotnet-code-quality` pode incluir verificação de que `Enum.Parse` deve ter correspondência exata com os valores do contrato OpenAPI.
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 3.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Edge case ignorado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (escopo — o tratamento de políticas pertence a RF-01, fora desta task)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `MissingPolicy` é inicializado como pending issue na criação (`CommercialOffer.Create`), mas a lista `_pendingIssues` é completamente substituída em toda chamada a `RecalculateCompleteness`. Quando `accommodationCount > 0`, o `CommercialOfferCompleteness.Compute` nunca inclui `MissingPolicy`, fazendo-o desaparecer permanentemente. `HasAnyBlockingIssue(PendingIssueType.MissingPolicy)` retornará `false` mesmo quando política estiver ausente. As operações de política (RF-01, tarefas futuras) precisarão gerenciar esta pending issue ou o `RecalculateCompleteness` precisará aceitar `hasPolicy`.
+
+2. Categoria Técnica: Edge case ignorado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (escopo)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `ExpectNotPublished()` é chamado apenas em `IncrementRevisionMutate`. `Validate`, `Submit` e `RecordReturn` não verificam o estado `Published` — uma oferta publicada rejeitará essas operações com `OFFER_NOT_READY`, `VALIDATION_REQUIRED` ou `OFFER_NOT_SUBMITTED`, em vez do código `PUBLISHED_OFFER_CHANGE_REQUIRES_F04`. Impacto funcional inexistente (os guards de estado bloqueiam), mas inconsistência na mensagem de erro.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum bloqueante)
+Categoria Técnica mais frequente: Edge case ignorado (2)
+Origem mais frequente: Task (escopo)
+Indício de fragilidade estrutural? Não — o agregado é coeso, com 62 testes passando, revisão otimista correta, evidências imutáveis, guard de published e completude com preservação do primeiro instante. As duas observações são não-bloqueantes e pertencem a aspectos tratados em tasks subsequentes.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar o ciclo de vida de `MissingPolicy` como pending issue gerenciada pelo agregado, distinguindo-a das pending issues computadas por `CommercialOfferCompleteness`.
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 4.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Lógica incorreta
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Task (requisito explícito "atualização atômica opcional das acomodações")
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `SetDefaultCommercialPolicyCommandHandler` executa `ExecuteSqlRawAsync` para atualizar acomodações antes de `SaveChangesAsync`. O SQL roda fora da transação do EF, portanto se `SaveChangesAsync` falhar, as acomodações são alteradas mas a política padrão não — estado inconsistente que viola o requisito de atomicidade da subtarefa 4.3. Impacto prático atual é baixo (tabela `accommodations` ainda não existe, Task 7.0), mas a abordagem precisará ser revista quando a entidade for implementada.
+
+2. Categoria Técnica: Overengineering
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O mapeamento `ToResponse` (conversão de enum PascalCase → camelCase) é duplicado em `CreateCommercialPolicyCommandHandler`, `UpdateCommercialPolicyCommandHandler` e `DeleteCommercialPolicyCommandHandler`. Três cópias da mesma lógica.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum bloqueante)
+Categoria Técnica mais frequente: Lógica incorreta / Overengineering (1 de cada)
+Origem mais frequente: Task / Limitação do modelo (1 de cada)
+Indício de fragilidade estrutural? Não — 35 testes passam, 274 unit tests passam, 55 architecture tests passam, build 0 erros 0 warnings, todos os tipos `internal`, CQRS nativo, FluentValidation em 4 commands, auditoria e invalidação corretas, 4 handlers implementados, EF config com JSONB e índices.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar que atualizações entre tabelas do agregado (política → acomodações) devem ser atômicas via EF change tracker ou transação explícita, não raw SQL.
+- Template de Task: N/A
+- Skill: `dotnet-architecture` pode reforçar que `ExecuteSqlRawAsync` não participa de `SaveChangesAsync` e requer transação explícita quando atomicidade é exigida.
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 2.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 1
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — build (24 projetos, 0 erros, 0 warnings), 17 testes focados passam, 177 testes unitários passam. As 8 violações de CHARSET reportadas por `dotnet format --verify-no-changes` pertencem a migrações de outbox de outros módulos (Discovery, Booking, Payments, CustomerCare, Curation, Operations, IdentityAccess, Insights), débito pré-existente do esqueleto basal sem relação com esta task. `IncorporatedProperty` está corretamente modelada como entidade `internal` com fábrica, método `Sync`, invariantes de validação, configuração EF com índice único em `onboarding_id` e 13 testes unitários cobrindo identidade, sincronização, idempotência e timestamps. O handler `SubmitToCurationCommandHandler` materializa/sincroniza a propriedade na mesma transação, com auditoria funcional e sem evento externo adicional.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 1.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 1
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não — build (24 projetos, 0 erros, 0 warnings), 263 testes passam, 25 testes focados passam, 55 testes de arquitetura passam. As 8 violações de CHARSET reportadas por `dotnet format --verify-no-changes` pertencem a migrações de outbox de outros módulos (Discovery, Booking, Payments, CustomerCare, Curation, Operations, IdentityAccess, Insights), débito pré-existente do esqueleto basal `64454b4` sem relação com esta task. Os arquivos novos (`ILegalPolicyCatalog`, `ConfiguredLegalPolicyCatalog`, `LegalPolicyCatalogTests`) estão corretos e formatados.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
 ---
 
 ## [2026-07-19] | PRD: prd-incorporar-parceiros-e-propriedades | Task: 11.0 (Revalidação)
@@ -1181,6 +1416,237 @@ Modelo utilizado:
 
 Zero Defects Identified
 Iterações até estabilização: 5
+
+### Resumo da Tarefa
+
+Total de Problemas: 0
+Categoria Técnica mais frequente: N/A
+Origem mais frequente: N/A
+Indício de fragilidade estrutural? Não
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 5.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Feature incompleta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: TechSpec (questão aberta)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `CommercialOffer.GetDefaultChildAgeRange()` retorna stub `null`. A TechSpec identifica como questão aberta: "Definir a origem futura da faixa etária infantil padrão da propriedade; até lá, `childAgeRangeSource` poderá ser `none`." Acomodações criadas sem override explícito recebem `ChildAgeRangeSource.None`, comportamento esperado para o MVP.
+
+2. Categoria Técnica: Feature incompleta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task (escopo — rates pertencem à Task 6.0)
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `RecalculateCompletenessFromAccommodations` hardcoded com `activeRateCount = 0` e `hasAnyRateOverlap = false`. A completude do offer não considera tarifas ativas, o que é correto até a Task 6.0. O cálculo de pendências pode indicar `IncompleteAccommodation` quando a pendência real for `MissingActiveRate`.
+
+3. Categoria Técnica: Overengineering
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Mapeamento `ToResponse`/inline duplicado em `CreateAccommodationCommandHandler` (linhas 169-187), `UpdateAccommodationCommandHandler` (linhas 312-331) e `DeleteAccommodationCommandHandler` (linhas 355-373). A lógica `bed.Type.ToString().ToLowerInvariant()` e `status.ToString().ToLowerInvariant()` é repetida 3 vezes. Extrair para método estático compartilhado reduziria duplicação.
+
+### Resumo da Tarefa
+
+Total de Problemas: 3 (nenhum bloqueante)
+Categoria Técnica mais frequente: Feature incompleta (2)
+Origem mais frequente: TechSpec (1), Task/escopo (1), Limitação do modelo (1)
+Indício de fragilidade estrutural? Não — a implementação é coesa, com 54 novos testes passando (328 total unit), entidade com setters privados, herança explícita de política e faixa etária, PATCH com distinção omitido/null/objeto, e conformidade completa com PRD, TechSpec e skills.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Resolver a questão aberta sobre a origem da faixa etária infantil padrão da propriedade antes da Task 10.0 (API endpoints).
+- Template de Task: N/A
+- Skill: N/A
+
+---
+
+## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 8.0
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Feature incompleta
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `DualValidationRate` está hardcoded como `1.0` em `GetCommercialOfferMetricsQueryHandler` (linha 626). A métrica de "dupla validação" deveria computar a razão de ofertas validadas por pessoa diferente do autor da revisão, mas o handler retorna uma constante. O response DTO inclui o campo `DualValidationRate` e os testes não validam seu cálculo.
+
+2. Categoria Técnica: Lógica incorreta
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `ListCommercialOffersQueryHandler` (linha 62) calcula completude com `100 - o.BlockingIssueCount * 33`, diferente do método `CommercialOfferMapper.CompletenessPercentage` que avalia tipos específicos de pending issues. Resultados podem divergir entre listagem e detalhe.
+
+3. Categoria Técnica: Edge case ignorado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Lacuna na TechSpec
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `GetCommercialOfferQueryHandler` não captura `DbUpdateException` em `SaveChangesAsync` para criação idempotente do draft. GETs concorrentes que ambos encontram `offer == null` resultam em um 500 para o perdedor, em vez de recarregar a oferta criada (conforme exigido pela TechSpec: "o perdedor recarrega a oferta criada").
+
+4. Categoria Técnica: Teste inadequado
+   Severidade: Baixa
+   Fase Detectada: Revisão
+   Origem Provável: Task
+   Necessitou Reimplementação Significativa? Não
+   Descrição: Nenhum teste cobre a criação concorrente do primeiro draft nem o comportamento do `AddBusinessDays` com edge cases de calendário (feriados, fins de semana) no contexto das métricas. `BusinessCalendarTests` de tasks anteriores cobre o calendário, mas não o fluxo do metrics handler com esses cenários.
+
+### Resumo da Tarefa
+
+Total de Problemas: 4 (nenhum bloqueante)
+Categoria Técnica mais frequente: Feature incompleta / Lógica incorreta / Edge case ignorado / Teste inadequado (1 de cada)
+Origem mais frequente: Limitação do modelo (2)
+Indício de fragilidade estrutural? Não — build 0 erros 0 warnings, 8/8 métricas tests passam, 388/388 unit tests passam, 8 query handlers implementados, 28 DTOs `internal`, 3 validators FluentValidation, `AsNoTracking` em todas as consultas, `AsSplitQuery` para detail, `CancellationToken` propagado, metadata sanitization via whitelist, mapeamento manual sem AutoMapper/Mapster. 2 falhas automatizadas são pré-existentes (architecture test na migration pública e CHARSET em migrations de outros módulos).
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Especificar a fórmula exata de `DualValidationRate` e o comportamento de retry do GET concorrente de criação de draft.
+- Template de Task: Exigir teste de concorrência para handlers que criam entidades sob constraint de unicidade.
+- Skill: `dotnet-testing` pode incluir cenário de teste para idempotência concorrente com EF Core.
+
+## 2026-07-23 | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Iteracao #5)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Tecnica: Erro de integracao
+   Severidade: P0 (bloqueante)
+   Fase Detectada: Teste
+   Origem Provavel: Limitacao do modelo / Contexto insuficiente (SDK version-specific behavior)
+   Necessitou Reimplementacao Significativa? Nao — requer ajuste na estrategia de claim mapping
+   Descricao: `JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear()` chamado no `PostConfigure` da factory de testes nao previne o mapeamento de claims no `Microsoft.IdentityModel.Tokens` 8.x (SDK .NET 10.0.10). As claims `scope` e `permission` continuam sendo mapeadas para tipos .NET, resultando em 403 para todas as requisicoes autenticadas com permissoes validas. 11 de 15 testes falham.
+
+### Resumo da Tarefa
+
+Total de Problemas: 1
+Categoria Tecnica mais frequente: Erro de integracao
+Origem mais frequente: Limitacao do modelo
+Indicio de fragilidade estrutural? Nao
+Sugestao de melhoria no:
+- TechSpec: Documentar a versao especifica de Microsoft.IdentityModel.Tokens e o mecanismo correto para desabilitar inbound claim mapping
+- Template de Task: Incluir verificacao de claim mapping nas validacoes de seguranca para testes de integracao
+- Skill: Atualizar `dotnet-testing` com orientacoes sobre configuracao de claims no WebApplicationFactory para SDK 10.x
+
+---
+
+## [2026-07-23] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Revalidação #8)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Alta
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O setup `EnsurePropertyExistsAsync` envia um onboarding sem o objeto obrigatório `property` e usa um `partnerId` aleatório em vez do parceiro criado. A API responde 400 (`Property must not be empty`) e o teste mascara a causa com `KeyNotFoundException` ao acessar `id`. Nove dos quinze testes de integração não chegam aos endpoints da tarefa.
+
+2. Categoria Técnica: Erro de integração
+   Severidade: Crítica
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Sim
+   Descrição: Os endpoints de validação e submissão retornam `CommercialOfferResponse`, enquanto o contrato exige `OfferValidation` e `OfferSubmission`. O `ValidationId` recebido na requisição de submissão é ignorado pelo endpoint e não existe no command do domínio.
+
+3. Categoria Técnica: Falha de validação
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: O retorno manual de 400 para `Idempotency-Key` ausente ou inválido não inclui os campos obrigatórios `code` e `traceId` e não passa pelo pipeline padronizado de Problem Details.
+
+4. Categoria Técnica: Falha de validação
+   Severidade: Alta
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `DateOnly.ParseExact` nos endpoints de tarifa e `DateTimeOffset.Parse` no endpoint de métricas podem lançar `FormatException`. Como o exception handler não converte essa exceção em 400, datas sintaticamente inválidas podem retornar 500 contra o contrato.
+
+5. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Revisão
+   Origem Provável: Limitação do modelo
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `TwentyUniqueEndpoints_ShouldExist` apenas conta strings em um `HashSet` hardcoded e não verifica o `EndpointDataSource`. Também não há cobertura efetiva de 429 nem do formato RFC 9457 para todos os status exigidos.
+
+### Resumo da Tarefa
+
+Total de Problemas: 5 (1 crítico, 3 altos e 1 médio)
+Categoria Técnica mais frequente: Teste inadequado / Falha de validação (2 cada)
+Origem mais frequente: Limitação do modelo (4)
+Indício de fragilidade estrutural? Sim — depois da correção do helper de autenticação, a suíte ainda reprova 9/15 casos por setup inválido e a inspeção encontrou divergências críticas entre os endpoints de workflow e o contrato.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: Explicitar os DTOs completos de resposta de validação/submissão e a obrigatoriedade de correlacionar a submissão com o `validationId` recebido.
+- Template de Task: Exigir que fixtures validem cada resposta de setup e que a contagem de endpoints consulte o pipeline real.
+- Skill: Incluir, em `dotnet-testing`, orientação para evitar overloads ambíguos em helpers `params` de autenticação e para validar fixtures antes do cenário principal.
+
+---
+
+## [2026-07-23] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Revalidação #9)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+1. Categoria Técnica: Teste inadequado
+   Severidade: Média
+   Fase Detectada: Teste
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: A primeira execução da suíte completa de integração falhou em `PropertyOnboardingWorkflowTests.LifecycleEndpoints_WithPoliciesRetryReturnCloseAndNewCycle_ShouldPreserveWorkflowHistory`, com uma resposta 422 onde o teste esperava 201. O caso passou isoladamente e a suíte completa passou 71/71 na repetição, caracterizando comportamento intermitente fora do conjunto focado da tarefa.
+
+2. Categoria Técnica: Falha de validação
+   Severidade: Baixa
+   Fase Detectada: Build
+   Origem Provável: Contexto insuficiente
+   Necessitou Reimplementação Significativa? Não
+   Descrição: `dotnet format LocalizeStay.sln --verify-no-changes --no-restore` continua reprovando por oito migrations `InitialOutbox.cs` preexistentes em outros módulos. A verificação dirigida a todos os arquivos alterados pela tarefa passou.
+
+### Resumo da Tarefa
+
+Total de Problemas: 2 (nenhum defeito funcional novo na tarefa 10.0)
+Categoria Técnica mais frequente: Teste inadequado / Falha de validação (1 de cada)
+Origem mais frequente: Contexto insuficiente (2)
+Indício de fragilidade estrutural? Sim — os gates globais do repositório ainda não são determinísticos ou integralmente verdes, apesar de build 24/24, testes unitários comerciais 95/95, testes focados 18/18, repetição da integração 71/71 e formatação do escopo estarem aprovados.
+Sugestão de melhoria no:
+- PRD: N/A
+- TechSpec: N/A
+- Template de Task: Distinguir explicitamente gates obrigatórios do escopo da tarefa e gates globais do repositório, mantendo ambos visíveis.
+- Skill: Permitir registrar dívida preexistente e flakiness não reproduzível separadamente, sem perder a rastreabilidade da regra de reprovação por comando.
+
+---
+
+## [2026-07-23] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 10.0 (Revalidação #10)
+
+Modelo utilizado:
+(Preenchido pelo Orquestrador)
+
+### Problemas Identificados
+
+Zero Defects Identified
+Iterações até estabilização: 2
 
 ### Resumo da Tarefa
 

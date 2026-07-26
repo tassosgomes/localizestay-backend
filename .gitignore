@@ -76,3 +76,5 @@ appsettings.*.local.json
 .tasks/prd-incorporar-parceiros-e-propriedades/*
 !.tasks/prd-incorporar-parceiros-e-propriedades/api-contract.yaml
 .agents
+.claude
+docs/ai-dev/*.*
