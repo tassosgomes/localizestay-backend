@@ -1,5 +1,6 @@
 using FluentValidation;
 using LocalizeStay.Modules.Inventory.Application.LegalPolicies;
+using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Infrastructure;
 using LocalizeStay.SharedKernel.Auditing;
@@ -84,6 +85,13 @@ internal sealed class CreateCommercialPolicyCommandHandler(
 
         var policy = offer.AddPolicy(Guid.NewGuid(), ruleSet, command.IsDefault, command.Actor, command.ExpectedRevision, now);
 
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "policy_created"));
+
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
             command.PropertyId.ToString(),
@@ -141,6 +149,13 @@ internal sealed class SetDefaultCommercialPolicyCommandHandler(
 
         offer.SetDefaultPolicy(command.PolicyId, command.Actor, command.ExpectedRevision, now);
 
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "policy_default_set"));
+
         var updatedAccommodationCount = 0;
         if (command.UpdateExistingAccommodations)
         {
@@ -196,6 +211,13 @@ internal sealed class UpdateCommercialPolicyCommandHandler(
         var now = clock.UtcNow;
 
         offer.DeactivatePolicy(command.PolicyId, command.ReplacementPolicyId, command.Actor, command.ExpectedRevision, now, command.DeactivationReason);
+
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "policy_deactivated"));
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
@@ -272,6 +294,13 @@ internal sealed class DeleteCommercialPolicyCommandHandler(
 
         var now = clock.UtcNow;
         offer.DeletePolicy(command.PolicyId, command.Actor, command.ExpectedRevision, now);
+
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "policy_deleted"));
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",

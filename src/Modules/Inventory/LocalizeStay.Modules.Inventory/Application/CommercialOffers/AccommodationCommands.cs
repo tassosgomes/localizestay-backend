@@ -1,5 +1,6 @@
 using FluentValidation;
 using LocalizeStay.Modules.Inventory.Application.LegalPolicies;
+using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Infrastructure;
 using LocalizeStay.SharedKernel.Auditing;
@@ -149,6 +150,13 @@ internal sealed class CreateAccommodationCommandHandler(
 
         offer.RecalculateCompletenessFromAccommodations(now);
 
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "accommodation_created"));
+
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
             command.PropertyId.ToString(),
@@ -295,6 +303,13 @@ internal sealed class UpdateAccommodationCommandHandler(
 
         offer.RecalculateCompletenessFromAccommodations(now);
 
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "accommodation_updated"));
+
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
             command.PropertyId.ToString(),
@@ -378,6 +393,13 @@ internal sealed class DeleteAccommodationCommandHandler(
         offer.DeleteAccommodation(command.AccommodationId, command.Actor, command.ExpectedRevision, now);
 
         offer.RecalculateCompletenessFromAccommodations(now);
+
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "accommodation_deleted"));
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",

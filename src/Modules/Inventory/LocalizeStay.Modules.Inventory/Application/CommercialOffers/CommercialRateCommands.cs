@@ -1,4 +1,5 @@
 using FluentValidation;
+using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Infrastructure;
 using LocalizeStay.SharedKernel.Auditing;
@@ -133,12 +134,20 @@ internal sealed class CreateCommercialRateCommandHandler(
         var overlapping = offer.GetOverlappingRates(rate);
         if (overlapping.Count > 0)
         {
+            InventoryTelemetry.OfferRateOverlap.Add(1, new KeyValuePair<string, object?>("operation", "create"));
             throw new BusinessRuleViolationException(
                 $"Rate period overlaps with {overlapping.Count} existing rate(s) for the same accommodation, conditionCode, policy and mealPlan.",
                 "RATE_PERIOD_OVERLAP");
         }
 
         offer.RecalculateCompletenessFromAccommodations(now);
+
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "rate_created"));
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
@@ -240,12 +249,20 @@ internal sealed class UpdateCommercialRateCommandHandler(
         var overlapping = offer.GetOverlappingRates(rate);
         if (overlapping.Count > 0)
         {
+            InventoryTelemetry.OfferRateOverlap.Add(1, new KeyValuePair<string, object?>("operation", "update"));
             throw new BusinessRuleViolationException(
                 $"Rate period overlaps with {overlapping.Count} existing rate(s) for the same accommodation, conditionCode, policy and mealPlan.",
                 "RATE_PERIOD_OVERLAP");
         }
 
         offer.RecalculateCompletenessFromAccommodations(now);
+
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "rate_updated"));
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
@@ -338,6 +355,13 @@ internal sealed class DeleteCommercialRateCommandHandler(
         offer.DeleteRate(command.RateId, command.Actor, command.ExpectedRevision, now);
 
         offer.RecalculateCompletenessFromAccommodations(now);
+
+        if (offer.CurrentValidation is not null)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
+
+        InventoryTelemetry.OfferMutation.Add(1, new KeyValuePair<string, object?>("operation", "rate_deleted"));
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",

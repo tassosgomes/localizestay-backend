@@ -2,6 +2,15 @@
 
 Registro estruturado de problemas identificados durante a validação das tarefas do AI Flow.
 
+> **A partir de 2026-07-26 este arquivo guarda apenas prosa acionável.**
+> A telemetria categórica (categoria, severidade, fase, origem, iteração) passou a ser
+> gravada em `quality-ledger.jsonl`, um registro por finding, para ser agregável sem
+> custo de leitura. Este `.md` agora recebe entrada **somente** quando um finding
+> bloqueante tem origem em artefato de planejamento (`Task mal fragmentada`,
+> `Lacuna na TechSpec`, `Ambiguidade no PRD`) — os casos que exigem uma sugestão
+> humana de melhoria no PRD, TechSpec, template de task ou skill.
+> O conteúdo abaixo desta nota é o histórico no formato antigo e permanece como arquivo.
+
 ---
 
 ## [2026-07-22] | PRD: prd-estruturar-acomodacoes-tarifas-e-politicas | Task: 7.0

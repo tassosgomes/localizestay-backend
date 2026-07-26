@@ -25,10 +25,10 @@ internal sealed class CurationOfferReturnedHandler(
         CurationOfferReturnedV1 integrationEvent,
         CancellationToken cancellationToken)
     {
-        using var activity = InventoryTelemetry.ActivitySource.StartActivity("inventory.commercial_offer.return");
-        activity?.SetTag("inventory.event.id", integrationEvent.EventId);
-        activity?.SetTag("inventory.commercial_offer.id", integrationEvent.PropertyId);
-        activity?.SetTag("inventory.submission.id", integrationEvent.SubmissionId);
+        using var activity = InventoryTelemetry.ActivitySource.StartActivity(InventoryTelemetry.Spans.Return);
+        activity?.SetTag(InventoryTelemetry.Tags.EventId, integrationEvent.EventId.ToString());
+        activity?.SetTag(InventoryTelemetry.Tags.PropertyId, integrationEvent.PropertyId.ToString());
+        activity?.SetTag(InventoryTelemetry.Tags.SubmissionId, integrationEvent.SubmissionId.ToString());
 
         var alreadyProcessed = await dbContext.OfferReturns
             .AsNoTracking()

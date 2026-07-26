@@ -31,20 +31,29 @@ internal sealed class CreateOfferValidationCommandHandler(
     {
         await validator.ValidateAndThrowAsync(command, cancellationToken);
 
-        using var activity = InventoryTelemetry.ActivitySource.StartActivity("inventory.commercial_offer.validate");
-        activity?.SetTag("inventory.commercial_offer.id", command.PropertyId);
+        using var activity = InventoryTelemetry.ActivitySource.StartActivity(InventoryTelemetry.Spans.Validate);
+        activity?.SetTag(InventoryTelemetry.Tags.PropertyId, command.PropertyId.ToString());
 
         var offer = await dbContext.CommercialOffers
             .SingleOrDefaultAsync(o => o.PropertyId == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
         var now = clock.UtcNow;
+        var previousValidationId = offer.CurrentValidation?.Id;
         offer.Validate(
             command.ValidationId,
             command.ValidatedBy,
             command.ExpectedRevision,
             now,
             command.Comment);
+
+        activity?.SetTag(InventoryTelemetry.Tags.ValidationId, command.ValidationId.ToString());
+        activity?.SetTag(InventoryTelemetry.Tags.OfferRevision, offer.Revision);
+
+        if (previousValidationId is not null && previousValidationId != command.ValidationId)
+        {
+            InventoryTelemetry.OfferValidationInvalidated.Add(1);
+        }
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",
@@ -80,8 +89,8 @@ internal sealed class SubmitCommercialOfferCommandHandler(
     {
         await validator.ValidateAndThrowAsync(command, cancellationToken);
 
-        using var activity = InventoryTelemetry.ActivitySource.StartActivity("inventory.commercial_offer.submit");
-        activity?.SetTag("inventory.commercial_offer.id", command.PropertyId);
+        using var activity = InventoryTelemetry.ActivitySource.StartActivity(InventoryTelemetry.Spans.Submit);
+        activity?.SetTag(InventoryTelemetry.Tags.PropertyId, command.PropertyId.ToString());
 
         var idempotencyKey = command.SubmissionId;
         var existing = await dbContext.CommercialOfferIdempotencyKeys
@@ -138,7 +147,9 @@ internal sealed class SubmitCommercialOfferCommandHandler(
         dbContext.CommercialOfferIdempotencyKeys.Add(key);
         dbContext.OutboxMessages.Add(OutboxMessageFactory.FromIntegrationEvent(integrationEvent));
 
-        activity?.SetTag("inventory.event.id", integrationEvent.EventId);
+        activity?.SetTag(InventoryTelemetry.Tags.EventId, integrationEvent.EventId.ToString());
+        activity?.SetTag(InventoryTelemetry.Tags.SubmissionId, submission.Id.ToString());
+        activity?.SetTag(InventoryTelemetry.Tags.OfferRevision, offer.Revision);
 
         auditWriter.Record(BusinessAuditEntry.Create(
             "CommercialOffer",

@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Globalization;
 using FluentValidation;
+using LocalizeStay.Modules.Inventory.Application.Observability;
 using LocalizeStay.Modules.Inventory.Application.Timing;
 using LocalizeStay.Modules.Inventory.Domain.CommercialOffers;
 using LocalizeStay.Modules.Inventory.Infrastructure;
@@ -97,6 +99,9 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
 {
     public async Task<CommercialOfferDetailDto> HandleAsync(GetCommercialOfferQuery query, CancellationToken cancellationToken)
     {
+        using var activity = InventoryTelemetry.ActivitySource.StartActivity(InventoryTelemetry.Spans.Load);
+        activity?.SetTag(InventoryTelemetry.Tags.PropertyId, query.PropertyId.ToString());
+
         var property = await dbContext.IncorporatedProperties.AsNoTracking()
             .SingleOrDefaultAsync(p => p.Id == query.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Property was not found.", "PROPERTY_NOT_FOUND");
@@ -135,8 +140,12 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
                     .SingleOrDefaultAsync(o => o.PropertyId == query.PropertyId, cancellationToken);
                 if (offer is not null)
                     goto OfferLoaded;
+                activity?.SetStatus(ActivityStatusCode.Error, "Commercial offer draft creation lost a concurrency race and could not be reloaded.");
                 throw;
             }
+
+            InventoryTelemetry.OfferCreated.Add(1, new KeyValuePair<string, object?>("result", InventoryTelemetry.Tags.ResultSuccess));
+            activity?.SetTag(InventoryTelemetry.Tags.OfferRevision, created.Revision);
 
             return new CommercialOfferDetailDto(
                 created.PropertyId,
@@ -164,6 +173,7 @@ internal sealed class GetCommercialOfferQueryHandler(InventoryDbContext dbContex
         }
 
     OfferLoaded:
+        activity?.SetTag(InventoryTelemetry.Tags.OfferRevision, offer.Revision);
         var completeness = 100 - offer.BlockingIssueCount * 33;
         if (completeness < 0) completeness = 0;
 
@@ -601,6 +611,10 @@ internal sealed class GetCommercialOfferMetricsQueryHandler(InventoryDbContext d
     public async Task<CommercialOfferMetricsResponse> HandleAsync(GetCommercialOfferMetricsQuery query, CancellationToken cancellationToken)
     {
         await validator.ValidateAndThrowAsync(query, cancellationToken);
+
+        using var activity = InventoryTelemetry.ActivitySource.StartActivity(InventoryTelemetry.Spans.Metrics);
+        activity?.SetTag("inventory.metrics.from", query.From.ToString("O"));
+        activity?.SetTag("inventory.metrics.to", query.To.ToString("O"));
 
         var offers = dbContext.CommercialOffers.AsNoTracking()
             .Where(o => o.CreatedAt >= query.From && o.CreatedAt < query.To);
