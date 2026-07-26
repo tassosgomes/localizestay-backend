@@ -663,6 +663,31 @@ internal sealed class GetCommercialOfferMetricsQueryHandler(InventoryDbContext d
         }
 
         double dualValidationRate = 1.0;
+        if (totalSubmitted > 0)
+        {
+            // Get all submitted offer property IDs and revisions
+            var submittedOfferInfo = await submittedOffers
+                .Select(o => new { o.PropertyId, o.Revision, o.RevisionAuthor })
+                .ToListAsync(cancellationToken);
+
+            // Create a lookup for revision author by composite key
+            var revisionAuthorLookup = submittedOfferInfo
+                .ToDictionary(o => $"{o.PropertyId}:{o.Revision}", o => o.RevisionAuthor);
+
+            var submittedPropertyIds = submittedOfferInfo.Select(o => o.PropertyId).ToList();
+
+            // Count valid validations for the submitted properties in memory. The composite
+            // property/revision lookup is not translatable by every supported EF provider.
+            var validValidations = await dbContext.OfferValidations.AsNoTracking()
+                .Where(v => submittedPropertyIds.Contains(v.PropertyId)
+                    && v.Status == ValidationStatus.Valid)
+                .ToListAsync(cancellationToken);
+
+            var dualValidatedCount = validValidations.Count(v =>
+                revisionAuthorLookup.TryGetValue($"{v.PropertyId}:{v.Revision}", out var revisionAuthor)
+                && v.ValidatedBy != revisionAuthor);
+            dualValidationRate = (double)dualValidatedCount / totalSubmitted;
+        }
 
         double requestsProcessedWithinFourBusinessHoursRate = 1.0;
         var propertyIdList = await offers.Select(o => o.PropertyId).Distinct().ToListAsync(cancellationToken);

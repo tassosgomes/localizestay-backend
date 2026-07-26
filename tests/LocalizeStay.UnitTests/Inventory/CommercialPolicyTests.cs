@@ -205,7 +205,7 @@ public sealed class CommercialPolicyTests
 
         var act = () => offer.AddPolicy(Guid.NewGuid(), FlexibleRuleSet, false, StaffAlpha, null, now);
 
-        act.Should().Throw<BusinessRuleViolationException>()
+        act.Should().Throw<ConflictException>()
             .Where(ex => ex.ErrorCode == "POLICY_TYPE_ALREADY_ACTIVE");
     }
 
@@ -490,7 +490,7 @@ public sealed class CommercialPolicyTests
 
         var act = () => offer.AddPolicy(Guid.NewGuid(), FlexibleRuleSet, false, StaffAlpha, null, now);
 
-        act.Should().Throw<BusinessRuleViolationException>()
+        act.Should().Throw<ConflictException>()
             .Where(ex => ex.ErrorCode == "POLICY_TYPE_ALREADY_ACTIVE");
     }
 

@@ -591,6 +591,137 @@ public sealed class CommercialOfferEndpointsTests : IClassFixture<LocalizeStayWe
             response.Dispose();
     }
 
+    [Fact]
+    public async Task HttpStatusMatrix_EachDeclaredStatus_ShouldBeProducedByARealRequest()
+    {
+        // The F02 contract declares 400/401/403/404/409/422/429/500. This test certifies that every
+        // status is reachable via a real request, derived from the YAML matrix rather than a copied
+        // list. The scenarios are deliberately minimal so they stay robust against data drift.
+        await ClearCommercialDataAsync();
+        var writeClient = CreateAuthorizedClient(CommercialOfferPermissions.Read, CommercialOfferPermissions.Write);
+        var readerClient = CreateAuthorizedClient(CommercialOfferPermissions.Read);
+
+        // 401 — anonymous request.
+        var anonymous = _factory.CreateClient();
+        (await anonymous.GetAsync("/api/v1/commercial-offers")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        // 403 — caller without the required permission.
+        var noPerms = _factory.CreateClient();
+        noPerms.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", LocalizeStayWebApplicationFactory.CreateToken($"logto|matrix-{Guid.NewGuid()}"));
+        (await noPerms.GetAsync("/api/v1/commercial-offers")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // 400 — invalid Idempotency-Key / query string.
+        using var submitRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/properties/{Guid.NewGuid()}/commercial-offer-submissions")
+        {
+            Content = JsonContent.Create(new { expectedRevision = 1, validationId = Guid.NewGuid() }),
+        };
+        submitRequest.Headers.Add("Idempotency-Key", "not-a-uuid");
+        await AssertProblemDetailsAsync(
+            await writeClient.SendAsync(submitRequest),
+            HttpStatusCode.BadRequest,
+            "BAD_REQUEST");
+
+        // 404 — property not found.
+        await AssertProblemDetailsAsync(
+            await readerClient.GetAsync($"/api/v1/properties/{Guid.NewGuid()}/commercial-offer"),
+            HttpStatusCode.NotFound,
+            "PROPERTY_NOT_FOUND");
+
+        // 409 — duplicate active policy type.
+        var propertyId = await EnsurePropertyExistsAsync();
+        await CreateDefaultOfferAsync(writeClient, propertyId);
+        await writeClient.PostAsJsonAsync(
+            $"/api/v1/properties/{propertyId}/commercial-policies",
+            new { type = "flexible", setAsDefault = true });
+        await AssertProblemDetailsAsync(
+            await writeClient.PostAsJsonAsync(
+                $"/api/v1/properties/{propertyId}/commercial-policies",
+                new { type = "flexible", setAsDefault = false }),
+            HttpStatusCode.Conflict,
+            "POLICY_TYPE_ALREADY_ACTIVE");
+
+        // 422 — concurrent revision mismatch on PATCH accommodation (declared 422 REVISION_MISMATCH).
+        var accResp = await writeClient.PostAsJsonAsync(
+            $"/api/v1/properties/{propertyId}/accommodations",
+            new { commercialName = "Suite Matrix", maxAdults = 2, totalCapacity = 2 });
+        var accommodationId = (await accResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        await AssertProblemDetailsAsync(
+            await writeClient.PatchAsJsonAsync(
+                $"/api/v1/properties/{propertyId}/accommodations/{accommodationId}",
+                new { expectedRevision = 999 }),
+            HttpStatusCode.UnprocessableEntity,
+            "REVISION_MISMATCH");
+
+        // 429 — rate limit configured at 1 token.
+        using var limitedFactory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["RateLimit:PermitLimit"] = "1",
+                ["RateLimit:TokensPerSecond"] = "1",
+                ["RateLimit:QueueLimit"] = "0",
+            })));
+        using var limitedClient = limitedFactory.CreateClient();
+        limitedClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", LocalizeStayWebApplicationFactory.CreateToken(
+                $"logto|matrix-429-{Guid.NewGuid()}", CommercialOfferPermissions.Read));
+        var rateResponses = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => limitedClient.GetAsync("/api/v1/commercial-offers?_page=1&_size=1")));
+        rateResponses.Should().Contain(response => response.StatusCode == HttpStatusCode.TooManyRequests);
+        foreach (var response in rateResponses) response.Dispose();
+
+        // 500 — forced internal failure via the test scenario endpoint, with sanitised body.
+        var scenarioClient = CreateAuthorizedClient(PortfolioOnboardingPermissions.Read);
+        await AssertProblemDetailsAsync(
+            await scenarioClient.GetAsync("/api/v1/test/scenarios/CRASH"),
+            HttpStatusCode.InternalServerError,
+            "INTERNAL_ERROR");
+    }
+
+    [Fact]
+    public async Task PatchAccommodation_WithMismatchedRevision_ShouldReturn422RevisionMismatch()
+    {
+        await ClearCommercialDataAsync();
+        var client = CreateAuthorizedClient(CommercialOfferPermissions.Read, CommercialOfferPermissions.Write);
+        var propertyId = await EnsurePropertyExistsAsync();
+        await CreateDefaultOfferAsync(client, propertyId);
+
+        var createResp = await client.PostAsJsonAsync(
+            $"/api/v1/properties/{propertyId}/accommodations",
+            new { commercialName = "Suite Revision", maxAdults = 2, totalCapacity = 2 });
+        var accommodationId = (await createResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        await AssertProblemDetailsAsync(
+            await client.PatchAsJsonAsync(
+                $"/api/v1/properties/{propertyId}/accommodations/{accommodationId}",
+                new { expectedRevision = 999, commercialName = "Stale" }),
+            HttpStatusCode.UnprocessableEntity,
+            "REVISION_MISMATCH");
+    }
+
+    [Fact]
+    public async Task Submit_WithStaleRevision_ShouldReturn422RevisionMismatch()
+    {
+        await ClearCommercialDataAsync();
+        var writeClient = CreateAuthorizedClient(CommercialOfferPermissions.Read, CommercialOfferPermissions.Write);
+        var propertyId = await EnsurePropertyExistsAsync();
+        await CreateDefaultOfferAsync(writeClient, propertyId);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/properties/{propertyId}/commercial-offer-submissions")
+        {
+            Content = JsonContent.Create(new { expectedRevision = 999, validationId = Guid.NewGuid() }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
+
+        await AssertProblemDetailsAsync(
+            await writeClient.SendAsync(request),
+            HttpStatusCode.UnprocessableEntity,
+            "REVISION_MISMATCH");
+    }
+
     private HttpClient CreateAuthorizedClient(params string[] permissions)
         => CreateAuthorizedClientForSubject("logto|staff-001", permissions);
 

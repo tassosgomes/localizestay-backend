@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -18,7 +19,12 @@ public sealed class InProcessEventBus(IServiceProvider serviceProvider, ILogger<
         ArgumentNullException.ThrowIfNull(integrationEvent);
 
         await using var scope = serviceProvider.CreateAsyncScope();
-        var handlers = scope.ServiceProvider.GetServices<IIntegrationEventHandler<TEvent>>();
+        var handlers = scope.ServiceProvider.GetServices<IIntegrationEventHandler<TEvent>>().ToList();
+        logger.LogInformation("Publishing event {EventType} with {HandlerCount} handlers", typeof(TEvent).Name, handlers.Count);
+        foreach (var handler in handlers)
+        {
+            logger.LogInformation("Found handler: {HandlerType}", handler.GetType().FullName);
+        }
 
         foreach (var handler in handlers)
         {

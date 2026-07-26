@@ -15,7 +15,7 @@ internal static class CommercialOfferEndpoints
         var offers = endpoints.MapGroup("/api/v1/commercial-offers").WithTags("Commercial Offers");
         offers.MapGet(string.Empty, ListAsync)
             .WithName("listCommercialOffers")
-            .WithContractResponses<CommercialOfferListResponse>(200, 400, 401, 403, 422, 429, 500)
+            .WithContractResponses<CommercialOfferListResponse>(200, 400, 401, 403, 404, 422, 429, 500)
             .RequireAuthorization(CommercialOfferPermissions.Read);
 
         var propertyOffer = endpoints.MapGroup("/api/v1/properties/{propertyId:guid}/commercial-offer").WithTags("Commercial Offers");

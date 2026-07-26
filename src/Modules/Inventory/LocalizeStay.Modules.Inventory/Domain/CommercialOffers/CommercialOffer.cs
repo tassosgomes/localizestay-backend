@@ -94,7 +94,8 @@ internal sealed class CommercialOffer
                 "REVISION_MISMATCH");
         }
 
-        if (State != OfferState.ReadyForValidation)
+        var canValidateCorrectedOffer = State == OfferState.Draft && BlockingIssueCount == 0;
+        if (State != OfferState.ReadyForValidation && !canValidateCorrectedOffer)
         {
             throw new BusinessRuleViolationException(
                 "Offer is not ready for validation.",
@@ -220,6 +221,14 @@ internal sealed class CommercialOffer
             throw new BusinessRuleViolationException(
                 $"Submission '{submissionId}' was not found for this offer.",
                 "SUBMISSION_NOT_FOUND");
+        }
+
+        var submission = _submissions.Single(s => s.Id == submissionId);
+        if (submission.Revision != Revision)
+        {
+            throw new BusinessRuleViolationException(
+                $"Submission '{submissionId}' belongs to a previous offer revision.",
+                "STALE_SUBMISSION_RETURN");
         }
 
         var offerReturn = OfferReturn.Create(
@@ -666,6 +675,7 @@ internal sealed class CommercialOffer
     }
     internal void RecalculateCompletenessFromAccommodations(DateTimeOffset now)
     {
+        var isCorrectedOffer = State == OfferState.Draft && _submissions.Count > 0;
         var accommodationCount = _accommodations.Count(a => a.Status == AccommodationStatus.Active);
         var completeAccommodationCount = _accommodations.Count(
             a => a.Status == AccommodationStatus.Active && a.IsCommerciallyComplete());
@@ -681,6 +691,11 @@ internal sealed class CommercialOffer
             activeRateCount,
             hasAnyRateOverlap,
             now);
+
+        if (isCorrectedOffer)
+        {
+            State = OfferState.Draft;
+        }
     }
 
     private void InvalidateValidationOnMutate()

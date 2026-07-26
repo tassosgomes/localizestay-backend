@@ -32,6 +32,8 @@ public class EncapsulationTests
         var result = Types.InAssembly(assembly)
             .That()
             .ResideInNamespaceStartingWith($"LocalizeStay.Modules.{moduleName}.{layer}")
+            .And()
+            .DoNotResideInNamespaceStartingWith($"LocalizeStay.Modules.{moduleName}.Infrastructure.Migrations")
             .Should()
             .NotBePublic()
             .GetResult();

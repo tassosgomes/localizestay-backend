@@ -20,7 +20,7 @@ internal static class CommercialPolicyEndpoints
             .RequireAuthorization(CommercialOfferPermissions.Read);
         policies.MapPost(string.Empty, CreateAsync)
             .WithName("createCommercialPolicy")
-            .WithContractResponses<CommercialPolicyResponse>(201, 400, 401, 403, 409, 422, 429, 500)
+            .WithContractResponses<CommercialPolicyResponse>(201, 400, 401, 403, 404, 409, 422, 429, 500)
             .RequireAuthorization(CommercialOfferPermissions.Write);
         policies.MapPut("/default", SetDefaultAsync)
             .WithName("setDefaultCommercialPolicy")

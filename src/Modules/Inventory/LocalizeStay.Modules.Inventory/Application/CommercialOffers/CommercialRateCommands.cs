@@ -104,10 +104,16 @@ internal sealed class CreateCommercialRateCommandHandler(
             .Include(o => o.Accommodations)
             .Include(o => o.Rates)
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
         var now = clock.UtcNow;
+
+        var defaultPolicyId = offer.Policies
+            .FirstOrDefault(policy => policy.IsDefault && policy.Status == PolicyStatus.Active)?.Id;
+        var accommodation = offer.GetAccommodation(command.AccommodationId)
+            ?? throw new NotFoundException("Accommodation was not found.", "ACCOMMODATION_NOT_FOUND");
 
         Domain.CommercialOffers.MealPlan? mealPlan = command.MealPlan is not null
             ? Enum.Parse<Domain.CommercialOffers.MealPlan>(command.MealPlan, true)
@@ -119,13 +125,13 @@ internal sealed class CreateCommercialRateCommandHandler(
             command.Name,
             command.ConditionCode,
             command.BasePriceCents,
-            command.IncludedGuests,
+            command.IncludedGuests ?? accommodation.MaxAdults,
             command.AdditionalAdultPriceCents,
             command.AdditionalChildPriceCents,
             command.ValidFrom,
             command.ValidTo,
             command.MinimumNights,
-            command.PolicyId,
+            command.PolicyId ?? defaultPolicyId,
             mealPlan,
             command.Actor,
             command.ExpectedRevision,
@@ -208,6 +214,7 @@ internal sealed class UpdateCommercialRateCommandHandler(
             .Include(o => o.Accommodations)
             .Include(o => o.Rates)
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
@@ -323,6 +330,7 @@ internal sealed class DeleteCommercialRateCommandHandler(
             .Include(o => o.Accommodations)
             .Include(o => o.Rates)
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 

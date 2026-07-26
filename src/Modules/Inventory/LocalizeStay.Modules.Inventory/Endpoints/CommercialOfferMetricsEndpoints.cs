@@ -17,7 +17,7 @@ internal static class CommercialOfferMetricsEndpoints
         var metrics = endpoints.MapGroup("/api/v1/commercial-offer-metrics").WithTags("Metrics");
         metrics.MapGet(string.Empty, GetAsync)
             .WithName("getCommercialOfferMetrics")
-            .WithContractResponses<CommercialOfferMetricsResponse>(200, 400, 401, 403, 422, 429, 500)
+            .WithContractResponses<CommercialOfferMetricsResponse>(200, 400, 401, 403, 404, 422, 429, 500)
             .RequireAuthorization(CommercialOfferPermissions.Metrics);
     }
 
@@ -34,8 +34,10 @@ internal static class CommercialOfferMetricsEndpoints
 
     private static DateTimeOffset ParseDateTime(string value, string field)
     {
+        var queryDecodedValue = value.Replace(' ', '+');
+
         if (DateTimeOffset.TryParse(
-            value,
+            queryDecodedValue,
             CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
             out var parsed))

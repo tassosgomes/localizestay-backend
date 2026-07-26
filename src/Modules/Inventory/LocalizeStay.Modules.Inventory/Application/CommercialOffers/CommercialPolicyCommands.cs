@@ -76,6 +76,7 @@ internal sealed class CreateCommercialPolicyCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
@@ -142,6 +143,7 @@ internal sealed class SetDefaultCommercialPolicyCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
@@ -205,6 +207,7 @@ internal sealed class UpdateCommercialPolicyCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 
@@ -271,6 +274,7 @@ internal sealed class DeleteCommercialPolicyCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 

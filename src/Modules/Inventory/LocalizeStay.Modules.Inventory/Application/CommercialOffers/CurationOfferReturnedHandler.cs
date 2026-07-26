@@ -30,6 +30,10 @@ internal sealed class CurationOfferReturnedHandler(
         activity?.SetTag(InventoryTelemetry.Tags.PropertyId, integrationEvent.PropertyId.ToString());
         activity?.SetTag(InventoryTelemetry.Tags.SubmissionId, integrationEvent.SubmissionId.ToString());
 
+        logger.LogInformation(
+            "CurationOfferReturnedHandler.HandleAsync called for EventId={EventId}, PropertyId={PropertyId}, SubmissionId={SubmissionId}",
+            integrationEvent.EventId, integrationEvent.PropertyId, integrationEvent.SubmissionId);
+
         var alreadyProcessed = await dbContext.OfferReturns
             .AsNoTracking()
             .AnyAsync(r => r.EventId == integrationEvent.EventId, cancellationToken);
@@ -45,6 +49,7 @@ internal sealed class CurationOfferReturnedHandler(
         }
 
         var offer = await dbContext.CommercialOffers
+            .Include(o => o.Submissions)
             .SingleOrDefaultAsync(o => o.PropertyId == integrationEvent.PropertyId, cancellationToken);
 
         if (offer is null)
@@ -56,6 +61,10 @@ internal sealed class CurationOfferReturnedHandler(
 
             return;
         }
+
+        logger.LogInformation(
+            "Offer found: PropertyId={PropertyId}, State={State}, Expected Submitted",
+            integrationEvent.PropertyId, offer.State);
 
         if (offer.State == OfferState.Returned)
         {
@@ -80,9 +89,21 @@ internal sealed class CurationOfferReturnedHandler(
                 integrationEvent.Reason,
                 integrationEvent.ReturnedBy,
                 now);
+
+            logger.LogInformation("RecordReturn succeeded, offer state now: {State}", offer.State);
         }
-        catch (BusinessRuleViolationException ex) when (ex.ErrorCode == "PUBLISHED_OFFER_CHANGE_REQUIRES_F04")
+        catch (BusinessRuleViolationException ex) when (ex.ErrorCode is "PUBLISHED_OFFER_CHANGE_REQUIRES_F04" or "STALE_SUBMISSION_RETURN")
         {
+            if (ex.ErrorCode == "STALE_SUBMISSION_RETURN")
+            {
+                logger.LogWarning(
+                    "Curation return event {EventId} ignored: submission {SubmissionId} is stale for property {PropertyId}.",
+                    integrationEvent.EventId,
+                    integrationEvent.SubmissionId,
+                    integrationEvent.PropertyId);
+                return;
+            }
+
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;
         }

@@ -97,7 +97,9 @@ internal sealed class CreateAccommodationCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Accommodations)
+            .Include(o => o.Rates)
             .Include(o => o.Policies)
+            .Include(o => o.CurrentValidation)
             .AsSplitQuery()
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
@@ -224,7 +226,10 @@ internal sealed class UpdateAccommodationCommandHandler(
 
         var offer = await dbContext.CommercialOffers
             .Include(o => o.Accommodations)
+            .Include(o => o.Rates)
             .Include(o => o.Policies)
+            .Include(o => o.Submissions)
+            .Include(o => o.CurrentValidation)
             .SingleOrDefaultAsync(o => o.Id == command.PropertyId, cancellationToken)
             ?? throw new NotFoundException("Commercial offer was not found.", "PROPERTY_NOT_FOUND");
 

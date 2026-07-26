@@ -88,11 +88,14 @@ public sealed class PermissionHandler(
 
     private bool HasPermission(ClaimsPrincipal principal, string permission)
     {
+        var grantsCommercialOfferRead = string.Equals(permission, CommercialOfferPermissions.Read, StringComparison.Ordinal);
+
         foreach (var claim in principal.FindAll(PermissionClaimType))
         {
             foreach (var token in claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
-                if (string.Equals(token, permission, StringComparison.Ordinal))
+                if (string.Equals(token, permission, StringComparison.Ordinal)
+                    || (grantsCommercialOfferRead && string.Equals(token, CommercialOfferPermissions.Write, StringComparison.Ordinal)))
                 {
                     return true;
                 }
