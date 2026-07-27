@@ -53,7 +53,11 @@ public sealed class GlobalExceptionHandler(
         // AsyncLocal-backed values do not survive the upstream exception propagation, so prefer the
         // correlation id mirrored into HttpContext.Items by CorrelationIdMiddleware when available.
         problemDetails.Extensions["traceId"] = ResolveTraceId(httpContext);
-        problemDetails.Extensions["metadata"] = BuildMetadata(exception);
+        var metadata = BuildMetadata(exception);
+        if (metadata is not null)
+        {
+            problemDetails.Extensions["metadata"] = metadata;
+        }
         problemDetails.Extensions["errors"] = BuildErrors(exception);
 
         return problemDetails;
@@ -89,17 +93,24 @@ public sealed class GlobalExceptionHandler(
         return [];
     }
 
-    private static IReadOnlyDictionary<string, object> BuildMetadata(Exception exception)
+    private static IReadOnlyDictionary<string, object?>? BuildMetadata(Exception exception)
     {
+        var metadata = new Dictionary<string, object?>(StringComparer.Ordinal);
+
         if (exception is ConflictException conflict && conflict.ConflictingResourceId is not null)
         {
-            return new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                ["conflictingResourceId"] = conflict.ConflictingResourceId.Value,
-            };
+            metadata["conflictingResourceId"] = conflict.ConflictingResourceId.Value;
         }
 
-        return new Dictionary<string, object>(StringComparer.Ordinal);
+        if (exception is BusinessRuleViolationException rule && rule.Metadata.Count > 0)
+        {
+            foreach (var item in rule.Metadata)
+            {
+                metadata[item.Key] = item.Value;
+            }
+        }
+
+        return metadata.Count > 0 ? metadata : null;
     }
 
     private static (HttpStatusCode Status, string Title, string ErrorCode, string Type, string? Detail) MapException(Exception exception) => exception switch
