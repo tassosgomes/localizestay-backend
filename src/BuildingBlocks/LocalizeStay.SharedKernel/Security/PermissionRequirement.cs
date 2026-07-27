@@ -107,6 +107,36 @@ public sealed class PermissionHandler(
 }
 
 /// <summary>
+/// Catalog of the high-level permissions declared on the F03 contract, covering
+/// <b>inventory control</b> only: allotment management, date blocks and hold/retention lifecycle
+/// (plus read and metrics operations). The F01/F02 capabilities that also live in the
+/// <c>Inventory</c> module (portfolio onboarding, commercial offers) keep their own catalogs.
+/// Unlike <see cref="CommercialOfferPermissions"/>, there is deliberately <b>no embedded
+/// hierarchy</b> here: <c>inventory:write</c> does NOT grant <c>inventory:read</c>. Access
+/// composition belongs to the role assigned in LogTo, so an operator that needs both receives
+/// both permissions explicitly (ADR: hidden handler hierarchies are invisible to security review).
+/// Endpoints reference these via <see cref="AuthorizationOptions"/>, never by raw string literals.
+/// </summary>
+public static class InventoryControlPermissions
+{
+    public const string Read = "inventory:read";
+    public const string Write = "inventory:write";
+    public const string Block = "inventory:block";
+    public const string Hold = "inventory:hold";
+    public const string Metrics = "inventory:metrics";
+
+    /// <summary>Every policy registered by <see cref="SecurityServiceCollectionExtensions.AddLocalizeStaySecurity"/>.</summary>
+    public static readonly IReadOnlyCollection<string> All =
+    [
+        Read,
+        Write,
+        Block,
+        Hold,
+        Metrics,
+    ];
+}
+
+/// <summary>
 /// Authorization middleware that turns 403 (and the implicit 401 produced by authentication) into
 /// RFC 9457 Problem Details responses that match the OpenAPI contract field by field
 /// (<c>code: FORBIDDEN</c> / <c>code: UNAUTHORIZED</c>).
