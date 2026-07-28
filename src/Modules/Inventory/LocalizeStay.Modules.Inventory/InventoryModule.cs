@@ -36,9 +36,14 @@ public sealed class InventoryModule : IModule
             .Bind(configuration.GetSection(BusinessCalendarOptions.SectionName))
             .Validate(ValidateBusinessCalendar, "Inventory business calendar requires a version, America/Fortaleza timezone, valid working days/hours, a non-negative unique holiday list, and a four-hour communication SLA.")
             .ValidateOnStart();
+        services.AddOptions<InventoryServiceWindowOptions>()
+            .Bind(configuration.GetSection(InventoryServiceWindowOptions.SectionName))
+            .Validate(ValidateInventoryServiceWindow, "Inventory service window requires a version, America/Fortaleza timezone, valid working days/hours, a unique valid holiday list, and a four-hour processing SLA.")
+            .ValidateOnStart();
         services.AddSingleton<IPartnerPreselectionValidator, ConfiguredPartnerPreselectionValidator>();
         services.AddSingleton<IDestinationEligibilityValidator, ConfiguredDestinationEligibilityValidator>();
         services.AddSingleton<IBusinessCalendar, ConfiguredBusinessCalendar>();
+        services.AddSingleton<IInventoryServiceWindow, ConfiguredInventoryServiceWindow>();
         services.AddOptions<LegalPolicyOptions>()
             .Bind(configuration.GetSection(LegalPolicyOptions.SectionName))
             .Validate(LegalPolicyOptionsValidator.Validate, "Inventory legal policies must contain exactly two entries — flexible and nonRefundable — each with a non-empty title, rulesSummary and ruleSetVersion.")
@@ -71,6 +76,21 @@ public sealed class InventoryModule : IModule
             && options.CommunicationSlaBusinessHours == 4
             && options.Holidays.All(holiday => DateOnly.TryParseExact(holiday, "yyyy-MM-dd", out _))
             && options.Holidays.Distinct(StringComparer.Ordinal).Count() == options.Holidays.Count;
+
+    private static bool ValidateInventoryServiceWindow(InventoryServiceWindowOptions options)
+        => !string.IsNullOrWhiteSpace(options.Version)
+            && string.Equals(options.TimeZone, "America/Fortaleza", StringComparison.Ordinal)
+            && options.WorkingDays.Count > 0
+            && options.WorkingDays.All(day => Enum.TryParse<DayOfWeek>(day, true, out _))
+            && HasValidWindowHours(options.StartTime, options.EndTime)
+            && options.ProcessingSlaBusinessHours == 4
+            && options.Holidays.All(holiday => DateOnly.TryParseExact(holiday, "yyyy-MM-dd", out _))
+            && options.Holidays.Distinct(StringComparer.Ordinal).Count() == options.Holidays.Count;
+
+    private static bool HasValidWindowHours(string startTime, string endTime)
+        => TimeOnly.TryParseExact(startTime, "HH:mm", out var start)
+            && TimeOnly.TryParseExact(endTime, "HH:mm", out var end)
+            && start < end;
 
     private static bool HasUniqueNonEmptyValues(IEnumerable<string> values)
         => values.Count() > 0

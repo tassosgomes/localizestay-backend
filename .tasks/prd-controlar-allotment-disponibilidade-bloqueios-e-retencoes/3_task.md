@@ -90,10 +90,10 @@ internal interface IInventoryServiceWindow
 | Entrada | Saída esperada |
 |---|---|
 | `receivedAt = 2026-07-26T03:40:00Z` (00h40 local, domingo) | `IsOutsideWindow = true` |
-| | `NextWindowStart = 2026-07-26T11:00:00Z` (08h00 local de segunda) |
-| | `AddBusinessHours(NextWindowStart, 4) = 2026-07-26T15:00:00Z` |
+| | `NextWindowStart = 2026-07-27T11:00:00Z` (08h00 local de segunda) |
+| | `AddBusinessHours(NextWindowStart, 4) = 2026-07-27T15:00:00Z` |
 
-> O exemplo do contrato usa `2026-07-26` como `slaStartsAt`; a implementação deve reproduzir exatamente esses três instantes.
+> O exemplo do contrato usa `2026-07-27T11:00:00Z` como `slaStartsAt` e `2026-07-27T15:00:00Z` como `slaDueAt`; a implementação deve reproduzir exatamente esses três instantes.
 
 Configuração-alvo:
 
@@ -124,6 +124,6 @@ Configuração-alvo:
 - [ ] Testes passam: `dotnet test ../localizestay-backend/LocalizeStay.sln --filter "FullyQualifiedName~InventoryServiceWindowTests"`
 - [ ] Build compila sem erros: `dotnet build ../localizestay-backend/LocalizeStay.sln --no-restore`
 - [ ] Formatação válida: `dotnet format ../localizestay-backend/LocalizeStay.sln --verify-no-changes --no-restore`
-- [ ] O caso canônico do contrato produz `slaStartsAt = 2026-07-26T11:00:00Z` e `slaDueAt = 2026-07-26T15:00:00Z`.
+- [ ] O caso canônico do contrato produz `slaStartsAt = 2026-07-27T11:00:00Z` e `slaDueAt = 2026-07-27T15:00:00Z`.
 - [ ] Configuração inválida (fim antes do início, feriado duplicado, SLA ≠ 4) falha no startup com mensagem explícita.
 - [ ] O SLA da F01/F02 não muda: `dotnet test ../localizestay-backend/LocalizeStay.sln --filter "FullyQualifiedName~BusinessCalendarTests"`
