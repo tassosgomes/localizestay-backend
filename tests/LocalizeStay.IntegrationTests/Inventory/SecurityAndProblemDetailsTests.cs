@@ -191,7 +191,7 @@ public sealed class SecurityAndProblemDetailsTests : IClassFixture<LocalizeStayW
         problem.GetProperty("instance").GetString().Should().Be("/api/v1/test/scenarios/notfound");
         problem.GetProperty("type").GetString().Should().StartWith("https://api.localizestay.com/problems/");
         problem.GetProperty("errors").GetArrayLength().Should().Be(0);
-        problem.GetProperty("metadata").GetobjectLength().Should().Be(0);
+        problem.TryGetProperty("metadata", out _).Should().BeFalse("metadata must be omitted when empty");
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public sealed class SecurityAndProblemDetailsTests : IClassFixture<LocalizeStayW
         problem.GetProperty("code").GetString().Should().Be("ONBOARDING_NOT_READY");
         problem.GetProperty("instance").GetString().Should().Be("/api/v1/test/scenarios/rule");
         problem.GetProperty("errors").GetArrayLength().Should().Be(0);
-        problem.GetProperty("metadata").GetobjectLength().Should().Be(0);
+        problem.TryGetProperty("metadata", out _).Should().BeFalse("metadata must be omitted when empty");
     }
 
     [Fact]

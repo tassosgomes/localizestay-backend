@@ -1,0 +1,2255 @@
+openapi: 3.1.0
+
+info:
+  title: LocalizeStay Inventory API
+  description: |
+    API de inventário da LocalizeStay: cessão de allotment contratado, composição
+    diária do saldo vendável, bloqueios planejados e emergenciais, fila de
+    solicitações recebidas por WhatsApp ou e-mail, consulta pública de
+    disponibilidade e ciclo de retenção durante o checkout.
+
+    **PRD de origem:** `tasks/prd-controlar-allotment-disponibilidade-bloqueios-e-retencoes/prd.md`
+    **Gerado em:** 2026-07-26
+
+    ## Premissas adotadas
+    - Autenticação por JWT emitido pelo LogTo; endpoints de backoffice exigem o escopo `staff`.
+    - `GET /availability` é o único endpoint público, consumido por D01 e pela vitrine.
+    - Permissões declarativas: `inventory:read`, `inventory:write`, `inventory:block`,
+      `inventory:hold` e `inventory:metrics`.
+    - Versionamento em `/api/v1`, paths em inglês/plural/kebab-case e JSON em camelCase.
+    - Coleções usam `_page` e `_size`; erros seguem RFC 9457 Problem Details.
+    - Quantidades são inteiros de unidades de acomodação; nunca fracionárias.
+    - Diárias usam `date` (data local da hospedagem); instantes usam `date-time` em UTC.
+    - Períodos de allotment e bloqueio são inclusivos em `startDate` e `endDate`.
+    - Períodos de estadia usam `checkIn` inclusivo e `checkOut` exclusivo; a noite de
+      `checkOut` não consome inventário.
+    - `availableUnits` = `allottedUnits` − `committedUnits` − `heldUnits` − `blockedUnits`,
+      com piso em zero. Data sem allotment tem saldo zero, nunca indefinido (RN-03, RF-03).
+    - A janela de atendimento é segunda a sábado, 08h00–20h00, avaliada em
+      `America/Fortaleza`; fora dela o SLA de quatro horas conta a partir das 08h00
+      do próximo período útil. Errata de 2026-07-26: a versão 1.0.0 desta descrição
+      dizia `America/Sao_Paulo`. Os dois fusos são UTC−3 fixo desde 2019, então
+      nenhum instante calculado muda; `America/Fortaleza` alinha o piloto do Nordeste
+      ao calendário já vigente em F01/F02 e permanece imune a um eventual retorno do
+      horário de verão. Nenhum schema, enum ou exemplo depende deste valor.
+    - A duração da retenção é parâmetro global fixo em quinze minutos nas Ondas A e B;
+      o cliente não a informa e o servidor devolve `expiresAt`.
+    - Allotment e bloqueio têm efeito imediato, sem Alteração Pendente — divergência
+      consciente com RN-08, registrada no PRD. A proteção é acesso restrito e auditoria.
+    - Eventos de domínio rodam in-process com outbox transacional (ADR-0002) e estão
+      documentados em `x-domain-events`; os schemas de payload são normativos.
+    - `Idempotency-Key` é obrigatório nas escritas concorrentes ou críticas:
+      criação de bloqueio, criação de retenção e comprometimento.
+    - `x-wave` indica a onda de entrega: `A` (inventário) ou `B` (retenção).
+  version: 1.0.0
+  contact:
+    name: LocalizeStay — Oferta e Inventário
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Desenvolvimento local
+  - url: https://lstay-api.tasso.dev.br/api/v1
+    description: Desenvolvimento compartilhado
+  - url: https://api.localizestay.com/api/v1
+    description: Produção
+
+security:
+  - LogToBearer: []
+
+tags:
+  - name: Availability
+    description: Consulta pública de saldo vendável para descoberta e decisão
+  - name: Daily Inventory
+    description: Calendário operacional e composição diária do saldo
+  - name: Allotments
+    description: Quantidade cedida exclusivamente à LocalizeStay por acomodação e período
+  - name: Inventory Blocks
+    description: Bloqueios planejados e emergenciais sobre a capacidade vendável
+  - name: Inventory Requests
+    description: Fila de solicitações recebidas por WhatsApp ou e-mail e apuração do SLA
+  - name: Inventory Holds
+    description: Retenção, liberação e comprometimento de inventário durante o checkout
+  - name: Metrics
+    description: Indicadores de lastro, cobertura, SLA e latência do bloqueio emergencial
+
+paths:
+  # ─── Availability (público) ───────────────────────────────────────────────
+  /availability:
+    get:
+      summary: Consultar disponibilidade vendável
+      description: |
+        Retorna, para um período de estadia, as acomodações vendáveis e o saldo
+        disponível. Uma acomodação só é considerada disponível quando **todas** as
+        noites entre `checkIn` (inclusivo) e `checkOut` (exclusivo) têm saldo
+        suficiente para `units` (RF-03).
+
+        Propriedade sem aprovação vigente, sem tarifa válida ou sem canal testado
+        nunca é retornada como vendável, independentemente do saldo (RN-07).
+        Data sem allotment cadastrado tem saldo zero, não indefinido.
+
+        Endpoint público: não expõe a composição interna do saldo. A parcela
+        comprometida, retida ou bloqueada só é visível no backoffice.
+      operationId: getAvailability
+      tags: [Availability]
+      security: []
+      x-wave: A
+      parameters:
+        - name: propertyId
+          in: query
+          description: Restringe a consulta a uma propriedade. Obrigatório quando accommodationId não é informado.
+          schema: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        - name: accommodationId
+          in: query
+          description: Restringe a consulta a uma acomodação específica.
+          schema: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        - name: checkIn
+          in: query
+          required: true
+          description: Primeira noite da estadia, inclusiva.
+          schema: { type: string, format: date, example: '2026-09-14' }
+        - name: checkOut
+          in: query
+          required: true
+          description: Data de saída, exclusiva. Deve ser posterior a checkIn e no máximo 30 noites adiante.
+          schema: { type: string, format: date, example: '2026-09-17' }
+        - name: units
+          in: query
+          description: Quantidade de unidades da mesma acomodação solicitadas na estadia.
+          schema: { type: integer, minimum: 1, maximum: 10, default: 1, example: 1 }
+      responses:
+        '200':
+          description: Consulta processada; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        Não exiba motivos operacionais ao viajante; use apenas bookable e
+        unavailabilityReason. Aplique debounce de 300ms na troca de datas e trate
+        data sem allotment como indisponível, jamais como erro.
+      x-backend-notes: |
+        Consulta de caminho quente de D01. Projetar leitura por (accommodationId, date)
+        com índice cobrindo o intervalo, avaliar os gates de RN-07 antes do saldo e
+        retornar o mínimo de availableUnits entre as noites da estadia.
+
+  # ─── Sellability ──────────────────────────────────────────────────────────
+  /properties/{propertyId}/sellability:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Diagnosticar vendabilidade da propriedade
+      description: |
+        Retorna o estado de cada condição de RN-07 — aprovação da propriedade,
+        conteúdo aprovado, tarifa válida, canal testado e allotment vigente — para
+        que o operador entenda por que uma acomodação não aparece em D01 mesmo com
+        saldo. Reflete também a suspensão comunicada por D06 (RF-05).
+      operationId: getPropertySellability
+      tags: [Daily Inventory]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      responses:
+        '200':
+          description: Diagnóstico retornado com sucesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PropertySellability' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Comunique cada gate por texto e ícone com a ação corretiva; não dependa somente de cores.
+      x-backend-notes: Ler os gates das projeções de F01, F02 e D06; não consultar schemas de outros módulos por join.
+
+  # ─── Calendário de inventário ─────────────────────────────────────────────
+  /properties/{propertyId}/inventory-calendar:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Consultar calendário de inventário
+      description: |
+        Retorna a grade de datas por acomodação com total cedido, comprometido,
+        retido, bloqueado e disponível, além dos bloqueios aplicáveis a cada data
+        e da sinalização de piso comercial (RF-04).
+
+        Datas sem allotment aparecem na grade com `allottedUnits: 0`.
+      operationId: getInventoryCalendar
+      tags: [Daily Inventory]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Primeira data da grade, inclusiva.
+          schema: { type: string, format: date, example: '2026-09-01' }
+        - name: to
+          in: query
+          required: true
+          description: Última data da grade, inclusiva. Intervalo máximo de 92 dias.
+          schema: { type: string, format: date, example: '2026-09-30' }
+        - name: accommodationId
+          in: query
+          description: Restringe a grade a uma acomodação.
+          schema: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        - name: onlyUnavailable
+          in: query
+          description: Quando true, retorna apenas datas sem saldo disponível.
+          schema: { type: boolean, default: false, example: false }
+      responses:
+        '200':
+          description: Calendário retornado com sucesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryCalendar' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        A grade é a tela de trabalho da Operação. Permita navegação por teclado célula
+        a célula, exponha a composição do saldo em texto acessível e ofereça as ações
+        de ceder allotment e aplicar ou remover bloqueio a partir da própria célula.
+      x-backend-notes: |
+        Recusar intervalos acima de 92 dias com 422 DATE_RANGE_TOO_LARGE. Projetar a
+        grade por leitura otimizada indexando (accommodationId, date).
+
+  /properties/{propertyId}/accommodations/{accommodationId}/daily-inventory/{date}:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/AccommodationId'
+      - $ref: '#/components/parameters/InventoryDate'
+    get:
+      summary: Detalhar composição de uma data
+      description: |
+        Abre uma célula do calendário e mostra qual parcela é comprometida, retida
+        ou bloqueada, com o motivo de cada bloqueio, as reservas que compõem o
+        comprometido e as retenções vigentes com seus prazos (RF-04).
+      operationId: getDailyInventoryDetail
+      tags: [Daily Inventory]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      responses:
+        '200':
+          description: Composição da data retornada com sucesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyInventoryDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Use este detalhe no drill-down da célula; holds só existem a partir da Onda B e vêm como lista vazia antes disso.
+      x-backend-notes: Retornar reservas e retenções apenas por identificador e quantidade; dados do viajante pertencem a D03.
+
+  # ─── Allotments ───────────────────────────────────────────────────────────
+  /properties/{propertyId}/allotments:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Listar allotments da propriedade
+      description: Retorna os allotments cedidos, com período, quantidade e sinalização de piso comercial.
+      operationId: listAllotments
+      tags: [Allotments]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: accommodationId
+          in: query
+          description: Filtra pelos allotments de uma acomodação.
+          schema: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        - name: status
+          in: query
+          description: Filtra pela situação do allotment.
+          schema: { $ref: '#/components/schemas/AllotmentStatus' }
+        - name: activeOn
+          in: query
+          description: Retorna apenas allotments vigentes na data informada.
+          schema: { type: string, format: date, example: '2026-09-14' }
+        - name: belowCommercialFloor
+          in: query
+          description: Quando true, retorna apenas allotments abaixo do piso de duas unidades por categoria.
+          schema: { type: boolean, example: true }
+      responses:
+        '200':
+          description: Allotments retornados com sucesso; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AllotmentListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Sinalize belowCommercialFloor com texto explícito — a categoria é vendável, mas fica fora da meta de cobertura.
+      x-backend-notes: Indexar (accommodationId, startDate, endDate) para suportar o filtro activeOn e a checagem de sobreposição.
+
+    post:
+      summary: Ceder allotment
+      description: |
+        Registra a quantidade cedida exclusivamente à LocalizeStay para uma
+        acomodação em um período contínuo, gerando inventário diário uniforme em
+        todas as datas do período (RF-01, RN-02).
+
+        Períodos sobrepostos da mesma acomodação são recusados com `409
+        ALLOTMENT_PERIOD_OVERLAP`. Allotment com menos de duas unidades é aceito,
+        porém marcado com `belowCommercialFloor: true` e fora da meta de cobertura.
+      operationId: createAllotment
+      tags: [Allotments]
+      x-required-scope: staff
+      x-required-permissions: [inventory:write]
+      x-wave: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAllotmentRequest' }
+      responses:
+        '201':
+          description: Allotment cedido
+          headers:
+            Location:
+              description: URI do allotment criado
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/allotments/1c0a3f4e-2b77-4f52-9a6d-0f1b7c8e5d31 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Allotment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        Ofereça o vínculo com a solicitação de origem (requestId) quando a ação nasce
+        de um item da fila; isso alimenta a apuração do SLA de quatro horas úteis.
+      x-backend-notes: |
+        Materializar inventário diário para todas as datas do período na mesma
+        transação e gravar a trilha de auditoria com autor, horário e origem.
+
+  /properties/{propertyId}/allotments/{allotmentId}:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/AllotmentId'
+    get:
+      summary: Consultar allotment
+      operationId: getAllotment
+      tags: [Allotments]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      responses:
+        '200':
+          description: Allotment encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Allotment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+    patch:
+      summary: Alterar allotment
+      description: |
+        Altera quantidade cedida ou período. Uma redução que deixaria o total cedido
+        abaixo do comprometido em qualquer data é recusada com `422
+        ALLOTMENT_BELOW_COMMITTED`, e a resposta indica registrar um bloqueio —
+        allotment representa o contrato, não a operação do dia (RF-01).
+
+        `expectedRevision` protege contra alteração sobre uma versão obsoleta.
+      operationId: updateAllotment
+      tags: [Allotments]
+      x-required-scope: staff
+      x-required-permissions: [inventory:write]
+      x-wave: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAllotmentRequest' }
+      responses:
+        '200':
+          description: Allotment alterado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Allotment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        No erro ALLOTMENT_BELOW_COMMITTED, use metadata.conflictingDates para mostrar
+        exatamente quais datas impedem a redução e ofereça o atalho de criar bloqueio.
+      x-backend-notes: Recalcular o inventário diário afetado na mesma transação e reavaliar belowCommercialFloor.
+
+    delete:
+      summary: Cancelar allotment
+      description: |
+        Cancela um allotment cedido por engano. Só é permitido quando nenhuma data do
+        período possui capacidade comprometida ou retida; caso contrário retorna
+        `422 ALLOTMENT_BELOW_COMMITTED`. O histórico do allotment é preservado.
+      operationId: cancelAllotment
+      tags: [Allotments]
+      x-required-scope: staff
+      x-required-permissions: [inventory:write]
+      x-wave: A
+      parameters:
+        - name: expectedRevision
+          in: query
+          required: true
+          description: Revisão conhecida do allotment; divergência resulta em 409.
+          schema: { type: integer, minimum: 1, example: 3 }
+        - name: reason
+          in: query
+          required: true
+          description: Motivo do cancelamento, preservado na trilha de auditoria.
+          schema: { type: string, minLength: 5, maxLength: 500, example: Allotment registrado na acomodação errada. }
+      responses:
+        '204':
+          description: Allotment cancelado
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exija confirmação explícita e deixe claro que a acomodação deixará de ser vendável no período.
+      x-backend-notes: Cancelamento é lógico; manter o registro com status cancelled e zerar o inventário diário derivado.
+
+  # ─── Bloqueios ────────────────────────────────────────────────────────────
+  /properties/{propertyId}/inventory-blocks:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    get:
+      summary: Listar bloqueios
+      description: Retorna bloqueios ativos e removidos, com tipo, motivo, origem e período.
+      operationId: listInventoryBlocks
+      tags: [Inventory Blocks]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: accommodationId
+          in: query
+          description: Filtra pelos bloqueios de uma acomodação.
+          schema: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        - name: type
+          in: query
+          description: Filtra por bloqueio planejado ou emergencial.
+          schema: { $ref: '#/components/schemas/BlockType' }
+        - name: status
+          in: query
+          description: Filtra pela situação do bloqueio.
+          schema: { $ref: '#/components/schemas/BlockStatus' }
+        - name: from
+          in: query
+          description: Retorna bloqueios que alcancem datas a partir desta.
+          schema: { type: string, format: date, example: '2026-09-01' }
+        - name: to
+          in: query
+          description: Retorna bloqueios que alcancem datas até esta.
+          schema: { type: string, format: date, example: '2026-09-30' }
+      responses:
+        '200':
+          description: Bloqueios retornados com sucesso; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryBlockListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Diferencie planned e emergency por texto e ícone, e mostre sempre o motivo junto ao bloqueio.
+      x-backend-notes: Preservar bloqueios removidos; o histórico sustenta a apuração de exposição e a mediação de D05.
+
+    post:
+      summary: Aplicar bloqueio
+      description: |
+        Reduz ou zera a capacidade vendável de uma acomodação em um período (RF-02).
+
+        **Planejado:** consome apenas saldo livre e nunca alcança retenções vigentes
+        ou reservas confirmadas. Quantidade maior que o saldo livre de qualquer data
+        é recusada com `422 INSUFFICIENT_FREE_BALANCE`, informando o saldo livre por data.
+
+        **Emergencial:** é sempre aceito, cessa novas vendas imediatamente, invalida
+        as retenções vigentes das datas alcançadas e produz `inventario-bloqueado`.
+        Exige `confirmEmergencyImpact: true`; sem isso retorna `422
+        EMERGENCY_BLOCK_CONFIRMATION_REQUIRED`. Quando alcança datas com reserva
+        confirmada, produz `bloqueio-afeta-reserva` para D05 e **não** cancela nem
+        altera reserva alguma (RN-15, RN-16).
+      operationId: createInventoryBlock
+      tags: [Inventory Blocks]
+      x-required-scope: staff
+      x-required-permissions: [inventory:block]
+      x-wave: A
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInventoryBlockRequest' }
+      responses:
+        '201':
+          description: Bloqueio aplicado
+          headers:
+            Location:
+              description: URI do bloqueio criado
+              schema: { type: string, example: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/inventory-blocks/b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryBlock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        No bloqueio emergencial, chame antes o impact-preview e mostre quantas reservas
+        confirmadas e retenções serão afetadas; só então habilite a confirmação
+        explícita que envia confirmEmergencyImpact.
+      x-backend-notes: |
+        O corte de novas vendas deve valer em até um minuto após o commit. Invalidar
+        retenções, gravar a outbox e responder na mesma transação; a métrica de
+        latência mede do commit ao efeito na consulta de disponibilidade.
+
+  /properties/{propertyId}/inventory-blocks/impact-preview:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+    post:
+      summary: Simular impacto de bloqueio
+      description: |
+        Calcula, sem alterar nada, o efeito de um bloqueio: saldo livre por data,
+        retenções que serão invalidadas e reservas confirmadas alcançadas. Sustenta
+        a confirmação explícita exigida no bloqueio emergencial.
+      operationId: previewInventoryBlockImpact
+      tags: [Inventory Blocks]
+      x-required-scope: staff
+      x-required-permissions: [inventory:block]
+      x-wave: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlockImpactPreviewRequest' }
+      responses:
+        '200':
+          description: Simulação calculada com sucesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlockImpactPreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        A simulação é indicativa: entre a prévia e a confirmação o saldo pode mudar.
+        Trate o 422 do POST de bloqueio como resposta legítima, não como falha da prévia.
+      x-backend-notes: Operação somente leitura; não deve criar retenção, bloqueio nem evento.
+
+  /properties/{propertyId}/inventory-blocks/{blockId}:
+    parameters:
+      - $ref: '#/components/parameters/PropertyId'
+      - $ref: '#/components/parameters/BlockId'
+    get:
+      summary: Consultar bloqueio
+      operationId: getInventoryBlock
+      tags: [Inventory Blocks]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      responses:
+        '200':
+          description: Bloqueio encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryBlock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+    patch:
+      summary: Remover bloqueio
+      description: |
+        Remove um bloqueio ativo devolvendo a capacidade correspondente ao saldo
+        vendável. O registro é preservado com `status: removed`, autor e motivo da
+        remoção (RF-02). Bloqueio já removido retorna `409 BLOCK_ALREADY_REMOVED`.
+
+        Bloqueio de origem `curationSuspension` não pode ser removido por esta
+        operação: só a retomada da aprovação por D06 o encerra (RF-05).
+      operationId: removeInventoryBlock
+      tags: [Inventory Blocks]
+      x-required-scope: staff
+      x-required-permissions: [inventory:block]
+      x-wave: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RemoveInventoryBlockRequest' }
+      responses:
+        '200':
+          description: Bloqueio removido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryBlock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Deixe explícito que a capacidade volta a ser vendável imediatamente após a remoção.
+      x-backend-notes: Recalcular o inventário diário do período e produzir inventario-liberado para as datas afetadas.
+
+  # ─── Fila de solicitações ─────────────────────────────────────────────────
+  /inventory-requests:
+    get:
+      summary: Listar fila de solicitações
+      description: |
+        Retorna a fila de solicitações recebidas por WhatsApp ou e-mail, ordenada por
+        prioridade e horário de recebimento. Avisos de bloqueio emergencial ocupam o
+        topo da fila, antes de qualquer solicitação de allotment, inclusive quando
+        recebidos fora da janela de atendimento (RF-04, RN-14).
+      operationId: listInventoryRequests
+      tags: [Inventory Requests]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: propertyId
+          in: query
+          description: Filtra solicitações de uma propriedade.
+          schema: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        - name: status
+          in: query
+          description: Filtra pela situação da solicitação.
+          schema: { $ref: '#/components/schemas/RequestStatus' }
+        - name: requestType
+          in: query
+          description: Filtra pelo tipo de alteração solicitada.
+          schema: { $ref: '#/components/schemas/RequestType' }
+        - name: priority
+          in: query
+          description: Filtra por prioridade.
+          schema: { $ref: '#/components/schemas/RequestPriority' }
+        - name: channel
+          in: query
+          description: Filtra pelo canal de recebimento.
+          schema: { $ref: '#/components/schemas/RequestChannel' }
+        - name: overdue
+          in: query
+          description: Quando true, retorna apenas solicitações pendentes com slaDueAt no passado.
+          schema: { type: boolean, example: true }
+        - name: sort
+          in: query
+          description: Campo de ordenação.
+          schema: { type: string, enum: [priorityThenReceivedAt, receivedAt, slaDueAt], default: priorityThenReceivedAt, example: priorityThenReceivedAt }
+        - name: order
+          in: query
+          description: Direção da ordenação.
+          schema: { type: string, enum: [asc, desc], default: asc, example: asc }
+      responses:
+        '200':
+          description: Fila retornada com sucesso; sem resultados retorna data como lista vazia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryRequestListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        Na abertura da janela, o topo da fila deve trazer os avisos emergenciais
+        recebidos de madrugada, domingo ou feriado, com o horário original destacado.
+      x-backend-notes: Indexar (status, priority, receivedAt) e calcular overdue no servidor, nunca no cliente.
+
+    post:
+      summary: Registrar solicitação recebida
+      description: |
+        Registra uma solicitação de allotment, bloqueio ou remoção de bloqueio
+        recebida por WhatsApp ou e-mail. O servidor deriva `slaStartsAt`,
+        `slaDueAt`, `priority` e `receivedOutsideWindow` a partir de `receivedAt`
+        e da janela de segunda a sábado, 08h00–20h00 (RN-14).
+
+        Nenhum canal altera o inventário automaticamente: registrar a solicitação
+        não aplica allotment nem bloqueio.
+      operationId: createInventoryRequest
+      tags: [Inventory Requests]
+      x-required-scope: staff
+      x-required-permissions: [inventory:write]
+      x-wave: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInventoryRequestRequest' }
+      responses:
+        '201':
+          description: Solicitação registrada
+          headers:
+            Location:
+              description: URI da solicitação criada
+              schema: { type: string, example: /api/v1/inventory-requests/3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        Peça o horário real de recebimento da mensagem, não o horário do registro.
+        Mostre imediatamente o slaDueAt calculado para o operador saber o prazo.
+      x-backend-notes: |
+        O calendário de dias úteis e feriados é parâmetro de configuração; deixe-o
+        explícito para permitir revisão sem deploy quando a escala for confirmada.
+
+  /inventory-requests/{requestId}:
+    parameters:
+      - $ref: '#/components/parameters/RequestId'
+    get:
+      summary: Consultar solicitação
+      operationId: getInventoryRequest
+      tags: [Inventory Requests]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: A
+      responses:
+        '200':
+          description: Solicitação encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+    patch:
+      summary: Atualizar situação da solicitação
+      description: |
+        Move a solicitação para `inProgress`, `processed` ou `cancelled`. Ao concluir,
+        o servidor grava `processedAt` e calcula `processedWithinSla`.
+
+        Quando a solicitação origina um allotment ou bloqueio, o vínculo é criado
+        automaticamente pelo `requestId` enviado naquelas operações; esta rota atende
+        os desfechos sem alteração de inventário, como duplicidade ou desistência.
+      operationId: updateInventoryRequest
+      tags: [Inventory Requests]
+      x-required-scope: staff
+      x-required-permissions: [inventory:write]
+      x-wave: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateInventoryRequestRequest' }
+      responses:
+        '200':
+          description: Solicitação atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Exija nota de desfecho ao cancelar; o texto sustenta a auditoria da fila.
+      x-backend-notes: Solicitação já processada não volta para pendente; recusar com 409 REQUEST_ALREADY_CLOSED.
+
+  # ─── Retenções (Onda B) ───────────────────────────────────────────────────
+  /inventory-holds:
+    post:
+      summary: Reter inventário
+      description: |
+        Separa temporariamente a capacidade solicitada no início do checkout, antes
+        de qualquer tentativa de pagamento (RF-06, RN-04).
+
+        A retenção só é criada quando **todas** as noites da estadia têm saldo
+        suficiente; caso contrário retorna `422 INSUFFICIENT_AVAILABILITY` com as
+        datas indisponíveis, e nenhuma capacidade é separada. Em duas intenções
+        concorrentes pela última unidade, apenas uma retenção é criada e a outra
+        recebe o mesmo 422.
+
+        A duração é parâmetro global fixo em quinze minutos; o cliente não a informa.
+        Reenvio com o mesmo `Idempotency-Key` devolve a retenção já criada.
+      operationId: createInventoryHold
+      tags: [Inventory Holds]
+      x-required-scope: staff
+      x-required-permissions: [inventory:hold]
+      x-wave: B
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInventoryHoldRequest' }
+      responses:
+        '201':
+          description: Retenção criada
+          headers:
+            Location:
+              description: URI da retenção criada
+              schema: { type: string, example: /api/v1/inventory-holds/5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryHold' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        O viajante não chama este endpoint: quem retém é D03 ao iniciar o checkout.
+        A interface deve mostrar o prazo restante a partir de expiresAt e avisar
+        claramente quando a retenção expirar.
+      x-backend-notes: |
+        Ponto de maior concorrência do sistema. Usar bloqueio pessimista ou update
+        condicional por (accommodationId, date) dentro de uma transação, verificando
+        todas as noites antes de gravar. Produzir inventario-retido pela outbox.
+
+  /inventory-holds/{holdId}:
+    parameters:
+      - $ref: '#/components/parameters/HoldId'
+    get:
+      summary: Consultar retenção
+      description: Retorna o estado atual da retenção, seu prazo e o desfecho quando já encerrada.
+      operationId: getInventoryHold
+      tags: [Inventory Holds]
+      x-required-scope: staff
+      x-required-permissions: [inventory:read]
+      x-wave: B
+      responses:
+        '200':
+          description: Retenção encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryHold' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+    delete:
+      summary: Liberar retenção
+      description: |
+        Devolve a capacidade retida ao saldo vendável quando a jornada termina sem
+        reserva confirmada (RF-07, RN-05).
+
+        Operação idempotente: retenção já expirada, já liberada ou já invalidada
+        retorna `204` sem devolver capacidade duas vezes. Retenção já comprometida
+        retorna `409 HOLD_ALREADY_COMMITTED` — liberar inventário de reserva
+        confirmada pertence a D03.
+      operationId: releaseInventoryHold
+      tags: [Inventory Holds]
+      x-required-scope: staff
+      x-required-permissions: [inventory:hold]
+      x-wave: B
+      parameters:
+        - name: reason
+          in: query
+          description: Motivo da liberação antecipada, preservado na trilha de auditoria.
+          schema: { $ref: '#/components/schemas/HoldReleaseReason' }
+      responses:
+        '204':
+          description: Retenção liberada ou já encerrada anteriormente
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Chamada de D03 ao encerrar o checkout; não há tela dedicada no MVP.
+      x-backend-notes: |
+        Comparar o estado antes de devolver capacidade. Só produzir inventario-liberado
+        quando a transição efetivamente ocorrer, para não emitir evento duplicado.
+
+  /inventory-holds/{holdId}/commitment:
+    parameters:
+      - $ref: '#/components/parameters/HoldId'
+    post:
+      summary: Comprometer inventário
+      description: |
+        Converte a retenção em capacidade comprometida quando a reserva é confirmada,
+        sem novo consumo do saldo (RF-08, RN-06).
+
+        Se a retenção já expirou, a confirmação só é aceita quando ainda houver saldo
+        disponível em todas as noites; caso contrário retorna `422
+        COMMITMENT_WITHOUT_AVAILABILITY`, sem comprometer capacidade inexistente, e a
+        divergência é comunicada a D03 e D07.
+      operationId: commitInventoryHold
+      tags: [Inventory Holds]
+      x-required-scope: staff
+      x-required-permissions: [inventory:hold]
+      x-wave: B
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommitInventoryHoldRequest' }
+      responses:
+        '201':
+          description: Inventário comprometido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryCommitment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: |
+        Chamada de D03 na confirmação. O erro COMMITMENT_WITHOUT_AVAILABILITY é um
+        caso de negócio esperado e precisa de tratamento explícito na jornada.
+      x-backend-notes: |
+        Retenção invalidada por bloqueio emergencial também cai na revalidação de saldo.
+        Comprometer e produzir inventario-comprometido na mesma transação.
+
+  # ─── Métricas ─────────────────────────────────────────────────────────────
+  /inventory-metrics:
+    get:
+      summary: Consultar métricas de inventário
+      description: |
+        Consolida os indicadores do PRD: venda sem lastro, oferta sem allotment, SLA
+        de processamento, cobertura de inventário, latência do bloqueio emergencial,
+        exposição fora da janela e expiração de retenção.
+
+        Indicadores da Onda B retornam `null` enquanto a retenção não estiver em produção.
+      operationId: getInventoryMetrics
+      tags: [Metrics]
+      x-required-scope: staff
+      x-required-permissions: [inventory:metrics]
+      x-wave: A
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Início do período de apuração, inclusivo.
+          schema: { type: string, format: date, example: '2026-09-01' }
+        - name: to
+          in: query
+          required: true
+          description: Fim do período de apuração, inclusivo.
+          schema: { type: string, format: date, example: '2026-09-30' }
+        - name: propertyId
+          in: query
+          description: Restringe a apuração a uma propriedade.
+          schema: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+      responses:
+        '200':
+          description: Métricas retornadas com sucesso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryMetrics' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+      x-frontend-notes: Apresente meta ao lado do valor; venda sem lastro e oferta sem allotment têm meta zero.
+      x-backend-notes: Apuração por projeção assíncrona; não recalcular a partir do agregado transacional em tempo de requisição.
+
+components:
+  securitySchemes:
+    LogToBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT emitido pelo LogTo para o API Resource da LocalizeStay, com escopo staff.
+
+  parameters:
+    Page:
+      name: _page
+      in: query
+      description: Número da página, iniciando em 1.
+      schema: { type: integer, minimum: 1, default: 1, example: 1 }
+    PageSize:
+      name: _size
+      in: query
+      description: Quantidade de itens por página, no máximo 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20, example: 20 }
+    PropertyId:
+      name: propertyId
+      in: path
+      required: true
+      description: Identificador público da propriedade incorporada.
+      schema: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+    AccommodationId:
+      name: accommodationId
+      in: path
+      required: true
+      description: Identificador público da acomodação.
+      schema: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+    AllotmentId:
+      name: allotmentId
+      in: path
+      required: true
+      description: Identificador público do allotment cedido.
+      schema: { type: string, format: uuid, example: 1c0a3f4e-2b77-4f52-9a6d-0f1b7c8e5d31 }
+    BlockId:
+      name: blockId
+      in: path
+      required: true
+      description: Identificador público do bloqueio.
+      schema: { type: string, format: uuid, example: b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77 }
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      description: Identificador público da solicitação recebida.
+      schema: { type: string, format: uuid, example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15 }
+    HoldId:
+      name: holdId
+      in: path
+      required: true
+      description: Identificador público da retenção de inventário.
+      schema: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+    InventoryDate:
+      name: date
+      in: path
+      required: true
+      description: Data da diária consultada.
+      schema: { type: string, format: date, example: '2026-09-14' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID estável reutilizado em tentativas da mesma operação.
+      schema: { type: string, format: uuid, example: d6c6f453-d1bc-4ca8-bf0f-2f061207192e }
+
+  responses:
+    BadRequest:
+      description: Requisição malformada ou parâmetro sintaticamente inválido
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/bad-request
+            title: Requisição inválida
+            status: 400
+            detail: O parâmetro checkOut deve ser posterior a checkIn.
+            instance: /api/v1/availability
+            code: BAD_REQUEST
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Unauthorized:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/unauthorized
+            title: Autenticação necessária
+            status: 401
+            detail: Apresente um JWT válido emitido pelo LogTo.
+            instance: /api/v1/inventory-requests
+            code: UNAUTHORIZED
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Forbidden:
+      description: Identidade autenticada sem autorização para a operação
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/forbidden
+            title: Operação não autorizada
+            status: 403
+            detail: A identidade não possui a permissão inventory:block.
+            instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/inventory-blocks
+            code: FORBIDDEN
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    NotFound:
+      description: Recurso ou referência upstream não encontrado
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/accommodation-not-found
+            title: Acomodação não encontrada
+            status: 404
+            detail: A acomodação informada não existe na propriedade.
+            instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/allotments
+            code: ACCOMMODATION_NOT_FOUND
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Conflict:
+      description: Conflito de período, versão ou estado concorrente
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/allotment-period-overlap
+            title: Período de allotment sobreposto
+            status: 409
+            detail: Já existe allotment desta acomodação com período sobreposto.
+            instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/allotments
+            code: ALLOTMENT_PERIOD_OVERLAP
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+            metadata:
+              conflictingAllotmentId: 1c0a3f4e-2b77-4f52-9a6d-0f1b7c8e5d31
+              conflictingStartDate: '2026-09-01'
+              conflictingEndDate: '2026-09-30'
+    UnprocessableEntity:
+      description: Requisição válida que viola uma regra de negócio
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/insufficient-free-balance
+            title: Saldo livre insuficiente
+            status: 422
+            detail: O bloqueio planejado excede o saldo livre em uma ou mais datas.
+            instance: /api/v1/properties/9547f6b8-c85d-47b6-a683-13306c20f862/inventory-blocks
+            code: INSUFFICIENT_FREE_BALANCE
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+            errors:
+              - { field: units, code: EXCEEDS_FREE_BALANCE, message: Reduza a quantidade ou registre um bloqueio emergencial. }
+            metadata:
+              freeBalanceByDate:
+                - { date: '2026-09-14', freeUnits: 1 }
+                - { date: '2026-09-15', freeUnits: 0 }
+    TooManyRequests:
+      description: Limite de requisições excedido
+      headers:
+        Retry-After:
+          description: Segundos até nova tentativa.
+          schema: { type: integer, example: 30 }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/rate-limit
+            title: Muitas requisições
+            status: 429
+            detail: Aguarde antes de tentar novamente.
+            instance: /api/v1/availability
+            code: RATE_LIMIT_EXCEEDED
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    InternalServerError:
+      description: Falha interna inesperada sem exposição de detalhes sensíveis
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://api.localizestay.com/problems/internal-error
+            title: Erro interno
+            status: 500
+            detail: Ocorreu uma falha inesperada. Tente novamente mais tarde.
+            instance: /api/v1/inventory-calendar
+            code: INTERNAL_ERROR
+            traceId: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+
+  schemas:
+    # ── Enums ──
+    AllotmentStatus:
+      type: string
+      enum: [active, expired, cancelled]
+      description: active vigente ou futuro; expired com período inteiramente no passado; cancelled revogado com histórico preservado.
+      example: active
+    BlockType:
+      type: string
+      enum: [planned, emergency]
+      description: planned consome apenas saldo livre; emergency é sempre aceito, cessa novas vendas e invalida retenções vigentes.
+      example: planned
+    BlockOrigin:
+      type: string
+      enum: [partnerRequest, internalOperation, curationSuspension]
+      description: partnerRequest aviso do parceiro por WhatsApp ou e-mail; internalOperation decisão da Operação; curationSuspension efeito de propriedade suspensa por D06.
+      example: partnerRequest
+    BlockReason:
+      type: string
+      enum: [maintenance, partnerUnavailability, overbookingProtection, curationSuspension, commercialDecision, other]
+      description: |
+        Motivo obrigatório do bloqueio.
+        maintenance manutenção da unidade; partnerUnavailability parceiro comunicou indisponibilidade;
+        overbookingProtection proteção contra venda externa da capacidade; curationSuspension suspensão de D06;
+        commercialDecision decisão comercial da LocalizeStay; other exige reasonNote.
+      example: partnerUnavailability
+    BlockStatus:
+      type: string
+      enum: [active, removed]
+      description: active em vigor sobre as datas do período; removed encerrado, com capacidade devolvida e histórico preservado.
+      example: active
+    HoldStatus:
+      type: string
+      enum: [held, expired, released, committed, invalidated]
+      description: |
+        held vigente até expiresAt; expired prazo terminado sem confirmação;
+        released liberada antes do prazo pelo encerramento da jornada;
+        committed convertida em capacidade comprometida; invalidated cancelada por bloqueio emergencial.
+      example: held
+    HoldReleaseReason:
+      type: string
+      enum: [reservationNotCompleted, checkoutAbandoned, operationalCorrection]
+      description: reservationNotCompleted jornada encerrada sem confirmação; checkoutAbandoned desistência explícita; operationalCorrection correção manual da Operação.
+      example: reservationNotCompleted
+    RequestChannel:
+      type: string
+      enum: [whatsapp, email]
+      description: Canal humano pelo qual a solicitação chegou. Nenhum canal altera o inventário automaticamente.
+      example: whatsapp
+    RequestType:
+      type: string
+      enum: [allotmentGrant, allotmentChange, block, blockRemoval]
+      description: allotmentGrant cessão nova; allotmentChange alteração de cessão existente; block aplicação de bloqueio; blockRemoval remoção de bloqueio.
+      example: block
+    RequestStatus:
+      type: string
+      enum: [pending, inProgress, processed, cancelled]
+      description: pending aguardando na fila; inProgress em tratamento; processed concluída; cancelled encerrada sem alteração de inventário.
+      example: pending
+    RequestPriority:
+      type: string
+      enum: [emergency, standard]
+      description: emergency aviso de bloqueio emergencial, sempre no topo da fila; standard demais solicitações, ordenadas por horário de recebimento.
+      example: emergency
+    UnavailabilityReason:
+      type: string
+      enum: [insufficientBalance, offerNotSellable]
+      description: |
+        Motivo público da indisponibilidade, deliberadamente coarso.
+        insufficientBalance não há saldo suficiente em ao menos uma noite;
+        offerNotSellable a oferta não atende às condições de RN-07.
+        A composição interna do saldo nunca é exposta publicamente.
+      example: insufficientBalance
+    SellabilityGateCode:
+      type: string
+      enum: [propertyApproved, contentApproved, validRate, testedChannel, activeAllotment]
+      description: Condições de RN-07 avaliadas antes do saldo para decidir se a oferta pode ser vendida.
+      example: activeAllotment
+    GateStatus:
+      type: string
+      enum: [satisfied, blocked, unknown]
+      description: satisfied condição atendida; blocked condição não atendida; unknown informação upstream ainda indisponível.
+      example: blocked
+
+    # ── Compartilhados ──
+    Pagination:
+      type: object
+      required: [page, size, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1, example: 1 }
+        size: { type: integer, minimum: 1, maximum: 100, example: 20 }
+        total: { type: integer, minimum: 0, example: 12 }
+        totalPages: { type: integer, minimum: 0, example: 1 }
+
+    StaffActor:
+      type: object
+      required: [id, displayName]
+      properties:
+        id: { type: string, description: Identificador opaco da identidade LogTo., example: usr_01J2M8HGK7D23R }
+        displayName: { type: string, example: Ana Souza }
+
+    DateRange:
+      type: object
+      description: Período contínuo com ambas as extremidades inclusivas.
+      required: [startDate, endDate]
+      properties:
+        startDate: { type: string, format: date, description: Primeira data do período, inclusiva., example: '2026-09-01' }
+        endDate: { type: string, format: date, description: Última data do período, inclusiva., example: '2026-09-30' }
+
+    DailyFreeBalance:
+      type: object
+      description: Saldo livre de uma data, usado para explicar recusas de bloqueio planejado.
+      required: [date, freeUnits]
+      properties:
+        date: { type: string, format: date, example: '2026-09-14' }
+        freeUnits: { type: integer, minimum: 0, description: Unidades não comprometidas, não retidas e não bloqueadas., example: 1 }
+
+    # ── Disponibilidade pública ──
+    AvailabilityResponse:
+      type: object
+      required: [checkIn, checkOut, nights, units, data]
+      properties:
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-17' }
+        nights: { type: integer, minimum: 1, description: Quantidade de noites consumidas pela estadia., example: 3 }
+        units: { type: integer, minimum: 1, example: 1 }
+        data:
+          type: array
+          description: Acomodações avaliadas. Sem resultados, retorna lista vazia.
+          items: { $ref: '#/components/schemas/AvailabilityItem' }
+
+    AvailabilityItem:
+      type: object
+      required: [propertyId, accommodationId, accommodationName, bookable, availableUnits]
+      properties:
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        propertyName: { type: string, example: Pousada Mar do Sol }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        accommodationName: { type: string, example: Chalé Vista Mar }
+        bookable:
+          type: boolean
+          description: True apenas quando todas as noites têm saldo suficiente e a oferta atende a RN-07.
+          example: true
+        availableUnits:
+          type: integer
+          minimum: 0
+          description: Menor saldo disponível entre as noites da estadia. Zero quando não há allotment na data.
+          example: 2
+        unavailabilityReason:
+          oneOf:
+            - { $ref: '#/components/schemas/UnavailabilityReason' }
+            - { type: 'null' }
+          description: Preenchido apenas quando bookable é false.
+          example: null
+        firstUnavailableDate:
+          type: [string, 'null']
+          format: date
+          description: Primeira noite sem saldo suficiente. Null quando bookable é true ou quando a oferta não é vendável por RN-07.
+          example: null
+
+    # ── Vendabilidade ──
+    PropertySellability:
+      type: object
+      required: [propertyId, propertyName, sellable, gates, evaluatedAt]
+      properties:
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        propertyName: { type: string, example: Pousada Mar do Sol }
+        sellable:
+          type: boolean
+          description: True apenas quando todos os gates estão satisfied.
+          example: false
+        suspendedByCuration:
+          type: boolean
+          description: True enquanto vigorar suspensão comunicada por D06.
+          example: false
+        gates:
+          type: array
+          items: { $ref: '#/components/schemas/SellabilityGate' }
+        evaluatedAt: { type: string, format: date-time, example: '2026-07-26T13:40:00Z' }
+
+    SellabilityGate:
+      type: object
+      required: [code, status]
+      properties:
+        code: { $ref: '#/components/schemas/SellabilityGateCode' }
+        status: { $ref: '#/components/schemas/GateStatus' }
+        detail:
+          type: [string, 'null']
+          description: Ação corretiva quando o gate está blocked.
+          example: Nenhum allotment vigente nos próximos 90 dias.
+        ownerDomain:
+          type: [string, 'null']
+          description: Domínio responsável por destravar o gate.
+          example: D02
+
+    # ── Calendário ──
+    InventoryCalendar:
+      type: object
+      required: [propertyId, propertyName, from, to, sellable, accommodations]
+      properties:
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        propertyName: { type: string, example: Pousada Mar do Sol }
+        from: { type: string, format: date, example: '2026-09-01' }
+        to: { type: string, format: date, example: '2026-09-30' }
+        sellable:
+          type: boolean
+          description: Vendabilidade da propriedade segundo RN-07; quando false, nenhuma acomodação é ofertada em D01.
+          example: true
+        accommodations:
+          type: array
+          items: { $ref: '#/components/schemas/AccommodationCalendar' }
+
+    AccommodationCalendar:
+      type: object
+      required: [accommodationId, accommodationName, belowCommercialFloor, days]
+      properties:
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        accommodationName: { type: string, example: Chalé Vista Mar }
+        belowCommercialFloor:
+          type: boolean
+          description: True quando o allotment vigente é menor que duas unidades; a categoria é vendável, mas fora da meta de cobertura.
+          example: false
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/DailyInventory' }
+
+    DailyInventory:
+      type: object
+      description: Composição do saldo de uma acomodação em uma data. availableUnits nunca é negativo.
+      required: [date, allottedUnits, committedUnits, heldUnits, blockedUnits, availableUnits, blocks]
+      properties:
+        date: { type: string, format: date, example: '2026-09-14' }
+        allottedUnits:
+          type: integer
+          minimum: 0
+          description: Total cedido pelo allotment vigente. Zero quando não há allotment na data.
+          example: 3
+        committedUnits: { type: integer, minimum: 0, description: Unidades consumidas por reservas confirmadas., example: 1 }
+        heldUnits: { type: integer, minimum: 0, description: Unidades separadas por retenções vigentes. Sempre 0 antes da Onda B., example: 1 }
+        blockedUnits: { type: integer, minimum: 0, description: Unidades retiradas por bloqueios ativos., example: 1 }
+        availableUnits: { type: integer, minimum: 0, description: Saldo vendável resultante, com piso em zero., example: 0 }
+        blocks:
+          type: array
+          description: Bloqueios ativos aplicáveis à data. Lista vazia quando não há bloqueio.
+          items: { $ref: '#/components/schemas/BlockSummary' }
+
+    BlockSummary:
+      type: object
+      required: [blockId, type, reason, units]
+      properties:
+        blockId: { type: string, format: uuid, example: b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77 }
+        type: { $ref: '#/components/schemas/BlockType' }
+        reason: { $ref: '#/components/schemas/BlockReason' }
+        reasonNote:
+          type: [string, 'null']
+          example: Parceiro comunicou infiltração no chalé.
+        units: { type: integer, minimum: 1, example: 1 }
+
+    DailyInventoryDetail:
+      type: object
+      description: Composição detalhada de uma data, com as reservas e retenções que a compõem.
+      required: [propertyId, accommodationId, date, allottedUnits, committedUnits, heldUnits, blockedUnits, availableUnits, blocks, commitments, holds]
+      properties:
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        date: { type: string, format: date, example: '2026-09-14' }
+        allottedUnits: { type: integer, minimum: 0, example: 3 }
+        committedUnits: { type: integer, minimum: 0, example: 1 }
+        heldUnits: { type: integer, minimum: 0, example: 1 }
+        blockedUnits: { type: integer, minimum: 0, example: 1 }
+        availableUnits: { type: integer, minimum: 0, example: 0 }
+        allotmentId:
+          type: [string, 'null']
+          format: uuid
+          description: Allotment que originou o total cedido. Null quando a data não tem allotment.
+          example: 1c0a3f4e-2b77-4f52-9a6d-0f1b7c8e5d31
+        blocks:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryBlock' }
+        commitments:
+          type: array
+          description: Reservas confirmadas que consomem a data. Apenas identificador e quantidade; dados do viajante pertencem a D03.
+          items: { $ref: '#/components/schemas/AffectedReservation' }
+        holds:
+          type: array
+          description: Retenções vigentes na data. Lista vazia antes da Onda B.
+          items: { $ref: '#/components/schemas/AffectedHold' }
+
+    # ── Allotment ──
+    Allotment:
+      type: object
+      description: Quantidade cedida exclusivamente à LocalizeStay para uma acomodação em um período contínuo.
+      required: [id, propertyId, accommodationId, accommodationName, units, startDate, endDate, status, belowCommercialFloor, revision, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 1c0a3f4e-2b77-4f52-9a6d-0f1b7c8e5d31 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        accommodationName: { type: string, example: Chalé Vista Mar }
+        units:
+          type: integer
+          minimum: 1
+          maximum: 999
+          description: Unidades inteiras cedidas em todas as datas do período.
+          example: 3
+        startDate: { type: string, format: date, description: Primeira data do período, inclusiva., example: '2026-09-01' }
+        endDate: { type: string, format: date, description: Última data do período, inclusiva., example: '2026-11-29' }
+        status: { $ref: '#/components/schemas/AllotmentStatus' }
+        belowCommercialFloor:
+          type: boolean
+          description: True quando units é menor que 2; a categoria é comercializável, mas não conta para a meta de cobertura do piloto.
+          example: false
+        contractReference:
+          type: [string, 'null']
+          description: Referência do instrumento contratual que sustenta a cessão.
+          example: CT-2026-0031
+        requestId:
+          type: [string, 'null']
+          format: uuid
+          description: Solicitação da fila que originou a cessão, quando houver.
+          example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15
+        notes:
+          type: [string, 'null']
+          example: Allotment negociado para a alta temporada do corredor Nordeste.
+        cancellationReason:
+          type: [string, 'null']
+          description: Preenchido apenas quando status é cancelled.
+          example: null
+        revision:
+          type: integer
+          minimum: 1
+          description: Incrementada a cada alteração; usada em expectedRevision.
+          example: 1
+        createdBy: { $ref: '#/components/schemas/StaffActor' }
+        updatedBy:
+          oneOf:
+            - { $ref: '#/components/schemas/StaffActor' }
+            - { type: 'null' }
+          description: Último autor da alteração. Null enquanto não houver alteração.
+        createdAt: { type: string, format: date-time, example: '2026-07-26T13:10:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-26T13:10:00Z' }
+
+    AllotmentListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Allotment' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    CreateAllotmentRequest:
+      type: object
+      required: [accommodationId, units, startDate, endDate]
+      properties:
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        units:
+          type: integer
+          minimum: 1
+          maximum: 999
+          description: Quantidade cedida, uniforme em todas as datas do período.
+          example: 3
+        startDate: { type: string, format: date, example: '2026-09-01' }
+        endDate: { type: string, format: date, description: Deve ser igual ou posterior a startDate., example: '2026-11-29' }
+        contractReference:
+          type: [string, 'null']
+          maxLength: 60
+          example: CT-2026-0031
+        requestId:
+          type: [string, 'null']
+          format: uuid
+          description: Vincula a cessão à solicitação da fila e conclui sua apuração de SLA.
+          example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15
+        notes:
+          type: [string, 'null']
+          maxLength: 1000
+          example: Allotment negociado para a alta temporada do corredor Nordeste.
+
+    UpdateAllotmentRequest:
+      type: object
+      description: Atualização parcial. Ao menos um campo além de expectedRevision deve ser enviado.
+      required: [expectedRevision]
+      properties:
+        units: { type: integer, minimum: 1, maximum: 999, example: 4 }
+        startDate: { type: string, format: date, example: '2026-09-01' }
+        endDate: { type: string, format: date, example: '2026-12-15' }
+        contractReference: { type: [string, 'null'], maxLength: 60, example: CT-2026-0031-A1 }
+        requestId: { type: [string, 'null'], format: uuid, example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15 }
+        notes: { type: [string, 'null'], maxLength: 1000, example: Aditivo assinado em 26/07. }
+        expectedRevision:
+          type: integer
+          minimum: 1
+          description: Revisão conhecida do allotment; divergência resulta em 409 REVISION_MISMATCH.
+          example: 1
+
+    # ── Bloqueio ──
+    InventoryBlock:
+      type: object
+      description: Redução operacional da capacidade vendável em um período.
+      required: [id, propertyId, accommodationId, accommodationName, type, origin, reason, units, startDate, endDate, status, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        accommodationName: { type: string, example: Chalé Vista Mar }
+        type: { $ref: '#/components/schemas/BlockType' }
+        origin: { $ref: '#/components/schemas/BlockOrigin' }
+        reason: { $ref: '#/components/schemas/BlockReason' }
+        reasonNote:
+          type: [string, 'null']
+          description: Obrigatório quando reason é other.
+          example: Parceiro comunicou infiltração no chalé.
+        units:
+          type: integer
+          minimum: 1
+          description: Unidades retiradas da venda em cada data do período. Em bloqueio emergencial que zera a acomodação, equivale ao total cedido.
+          example: 1
+        blocksEntireAccommodation:
+          type: boolean
+          description: True quando o bloqueio zera a capacidade vendável da acomodação no período.
+          example: false
+        startDate: { type: string, format: date, example: '2026-09-14' }
+        endDate: { type: string, format: date, example: '2026-09-16' }
+        status: { $ref: '#/components/schemas/BlockStatus' }
+        requestId:
+          type: [string, 'null']
+          format: uuid
+          description: Solicitação da fila que originou o bloqueio, quando houver.
+          example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15
+        affectedReservationCount:
+          type: integer
+          minimum: 0
+          description: Reservas confirmadas alcançadas na aplicação. Sempre 0 em bloqueio planejado.
+          example: 0
+        invalidatedHoldCount:
+          type: integer
+          minimum: 0
+          description: Retenções vigentes invalidadas na aplicação. Sempre 0 em bloqueio planejado.
+          example: 0
+        salesStoppedAt:
+          type: [string, 'null']
+          format: date-time
+          description: Instante em que novas vendas cessaram; base da métrica de latência do bloqueio emergencial.
+          example: '2026-07-26T13:12:04Z'
+        removedAt:
+          type: [string, 'null']
+          format: date-time
+          example: null
+        removalReason:
+          type: [string, 'null']
+          example: null
+        removedBy:
+          oneOf:
+            - { $ref: '#/components/schemas/StaffActor' }
+            - { type: 'null' }
+          description: Autor da remoção. Null enquanto o bloqueio estiver ativo.
+        createdBy: { $ref: '#/components/schemas/StaffActor' }
+        createdAt: { type: string, format: date-time, example: '2026-07-26T13:12:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-26T13:12:04Z' }
+
+    InventoryBlockListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryBlock' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    CreateInventoryBlockRequest:
+      type: object
+      required: [accommodationId, type, origin, reason, startDate, endDate]
+      properties:
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        type: { $ref: '#/components/schemas/BlockType' }
+        origin: { $ref: '#/components/schemas/BlockOrigin' }
+        reason: { $ref: '#/components/schemas/BlockReason' }
+        reasonNote:
+          type: [string, 'null']
+          maxLength: 1000
+          description: Obrigatório quando reason é other; caso contrário, complementa o motivo.
+          example: Parceiro comunicou infiltração no chalé.
+        units:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 999
+          description: Unidades a bloquear. Omitir ou enviar null zera a capacidade vendável da acomodação no período.
+          example: 1
+        startDate: { type: string, format: date, example: '2026-09-14' }
+        endDate: { type: string, format: date, description: Deve ser igual ou posterior a startDate., example: '2026-09-16' }
+        requestId:
+          type: [string, 'null']
+          format: uuid
+          description: Vincula o bloqueio à solicitação da fila e conclui sua apuração de SLA.
+          example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15
+        confirmEmergencyImpact:
+          type: boolean
+          default: false
+          description: |
+            Obrigatoriamente true quando type é emergency. Representa a confirmação
+            explícita do operador após ver quantas reservas confirmadas e retenções
+            serão afetadas. Ignorado em bloqueio planejado.
+          example: false
+
+    RemoveInventoryBlockRequest:
+      type: object
+      required: [status, removalReason]
+      properties:
+        status:
+          type: string
+          enum: [removed]
+          description: Única transição admitida por esta operação.
+          example: removed
+        removalReason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          description: Motivo da remoção, preservado no histórico do bloqueio.
+          example: Parceiro confirmou que o reparo foi concluído.
+
+    BlockImpactPreviewRequest:
+      type: object
+      required: [accommodationId, type, startDate, endDate]
+      properties:
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        type: { $ref: '#/components/schemas/BlockType' }
+        units:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 999
+          description: Unidades a simular. Null simula o bloqueio total da acomodação no período.
+          example: 1
+        startDate: { type: string, format: date, example: '2026-09-14' }
+        endDate: { type: string, format: date, example: '2026-09-16' }
+
+    BlockImpactPreview:
+      type: object
+      description: Resultado indicativo; o saldo pode mudar entre a simulação e a aplicação.
+      required: [wouldBeAccepted, affectedReservationCount, invalidatedHoldCount, freeBalanceByDate, affectedReservations, invalidatedHolds]
+      properties:
+        wouldBeAccepted:
+          type: boolean
+          description: False apenas em bloqueio planejado sem saldo livre suficiente. Bloqueio emergencial é sempre aceito.
+          example: true
+        rejectionCode:
+          type: [string, 'null']
+          description: Código que seria retornado na aplicação, quando wouldBeAccepted é false.
+          example: null
+        affectedReservationCount: { type: integer, minimum: 0, example: 1 }
+        invalidatedHoldCount: { type: integer, minimum: 0, example: 2 }
+        freeBalanceByDate:
+          type: array
+          items: { $ref: '#/components/schemas/DailyFreeBalance' }
+        affectedReservations:
+          type: array
+          description: Reservas confirmadas alcançadas. Sempre lista vazia em bloqueio planejado.
+          items: { $ref: '#/components/schemas/AffectedReservation' }
+        invalidatedHolds:
+          type: array
+          description: Retenções vigentes que seriam invalidadas. Sempre lista vazia em bloqueio planejado.
+          items: { $ref: '#/components/schemas/AffectedHold' }
+
+    AffectedReservation:
+      type: object
+      description: Reserva confirmada alcançada por um bloqueio ou que compõe o comprometido de uma data.
+      required: [reservationId, checkIn, checkOut, units]
+      properties:
+        reservationId: { type: string, format: uuid, example: 8a1e6f2c-4b90-4d75-8e33-c2f7b0d95a41 }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-17' }
+        units: { type: integer, minimum: 1, example: 1 }
+
+    AffectedHold:
+      type: object
+      description: Retenção vigente alcançada por um bloqueio ou que compõe o retido de uma data.
+      required: [holdId, reservationIntentId, checkIn, checkOut, units, expiresAt]
+      properties:
+        holdId: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+        reservationIntentId: { type: string, format: uuid, example: c7b9e401-63af-4a28-9d15-3e806f2b7c4d }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-16' }
+        units: { type: integer, minimum: 1, example: 1 }
+        expiresAt: { type: string, format: date-time, example: '2026-07-26T13:27:00Z' }
+
+    # ── Fila de solicitações ──
+    InventoryRequest:
+      type: object
+      description: Solicitação de alteração de inventário recebida por WhatsApp ou e-mail.
+      required: [id, propertyId, propertyName, channel, requestType, priority, status, receivedAt, receivedOutsideWindow, slaStartsAt, slaDueAt, summary, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, example: 3f9c1d80-58ab-4a1e-9e7c-6b0f2d4a8c15 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        propertyName: { type: string, example: Pousada Mar do Sol }
+        accommodationId:
+          type: [string, 'null']
+          format: uuid
+          description: Acomodação alvo, quando a solicitação já a identifica.
+          example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787
+        channel: { $ref: '#/components/schemas/RequestChannel' }
+        requestType: { $ref: '#/components/schemas/RequestType' }
+        priority: { $ref: '#/components/schemas/RequestPriority' }
+        status: { $ref: '#/components/schemas/RequestStatus' }
+        requesterName:
+          type: [string, 'null']
+          description: Quem enviou a mensagem do lado do parceiro.
+          example: Marcos Vinícius — recepção
+        receivedAt:
+          type: string
+          format: date-time
+          description: Horário real de recebimento da mensagem, não do registro no sistema.
+          example: '2026-07-26T03:40:00Z'
+        receivedOutsideWindow:
+          type: boolean
+          description: True quando o recebimento ocorreu fora da janela de segunda a sábado, 08h00–20h00.
+          example: true
+        slaStartsAt:
+          type: string
+          format: date-time
+          description: Início da contagem do SLA. Igual a receivedAt dentro da janela; 08h00 do próximo período útil fora dela.
+          example: '2026-07-26T11:00:00Z'
+        slaDueAt:
+          type: string
+          format: date-time
+          description: Prazo de quatro horas úteis contadas a partir de slaStartsAt.
+          example: '2026-07-26T15:00:00Z'
+        processedAt:
+          type: [string, 'null']
+          format: date-time
+          example: null
+        processedWithinSla:
+          type: [boolean, 'null']
+          description: Calculado no fechamento da solicitação. Null enquanto pendente.
+          example: null
+        summary:
+          type: string
+          description: Conteúdo relevante da solicitação, não a conversa completa.
+          example: Parceiro comunicou indisponibilidade do Chalé Vista Mar de 14 a 16 de setembro.
+        resultingAllotmentId:
+          type: [string, 'null']
+          format: uuid
+          example: null
+        resultingBlockId:
+          type: [string, 'null']
+          format: uuid
+          example: b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77
+        outcomeNote:
+          type: [string, 'null']
+          description: Desfecho quando não houve alteração de inventário.
+          example: null
+        createdBy: { $ref: '#/components/schemas/StaffActor' }
+        processedBy:
+          oneOf:
+            - { $ref: '#/components/schemas/StaffActor' }
+            - { type: 'null' }
+          description: Responsável pelo tratamento. Null enquanto pendente.
+        createdAt: { type: string, format: date-time, example: '2026-07-26T11:02:00Z' }
+        updatedAt: { type: string, format: date-time, example: '2026-07-26T11:02:00Z' }
+
+    InventoryRequestListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryRequest' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    CreateInventoryRequestRequest:
+      type: object
+      required: [propertyId, channel, requestType, receivedAt, summary]
+      properties:
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: [string, 'null'], format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        channel: { $ref: '#/components/schemas/RequestChannel' }
+        requestType: { $ref: '#/components/schemas/RequestType' }
+        receivedAt:
+          type: string
+          format: date-time
+          description: Horário real de recebimento da mensagem. Não pode estar no futuro.
+          example: '2026-07-26T03:40:00Z'
+        emergency:
+          type: boolean
+          default: false
+          description: |
+            True quando o aviso caracteriza bloqueio emergencial. Define priority como
+            emergency e coloca a solicitação no topo da fila, inclusive quando recebida
+            fora da janela de atendimento.
+          example: true
+        requesterName: { type: [string, 'null'], maxLength: 200, example: Marcos Vinícius — recepção }
+        summary:
+          type: string
+          minLength: 5
+          maxLength: 2000
+          example: Parceiro comunicou indisponibilidade do Chalé Vista Mar de 14 a 16 de setembro.
+
+    UpdateInventoryRequestRequest:
+      type: object
+      description: Move a solicitação na fila. outcomeNote é obrigatório para cancelled.
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/RequestStatus' }
+        outcomeNote:
+          type: [string, 'null']
+          maxLength: 1000
+          example: Solicitação duplicada do aviso recebido às 03h40.
+
+    # ── Retenção ──
+    InventoryHold:
+      type: object
+      description: Separação temporária de capacidade durante o checkout.
+      required: [id, reservationIntentId, propertyId, accommodationId, checkIn, checkOut, nights, units, status, heldAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+        reservationIntentId:
+          type: string
+          format: uuid
+          description: Intenção de reserva de D03 que originou a retenção.
+          example: c7b9e401-63af-4a28-9d15-3e806f2b7c4d
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        checkIn: { type: string, format: date, description: Primeira noite retida, inclusiva., example: '2026-09-14' }
+        checkOut: { type: string, format: date, description: Data de saída, exclusiva; a noite de checkOut não é retida., example: '2026-09-17' }
+        nights: { type: integer, minimum: 1, example: 3 }
+        units: { type: integer, minimum: 1, example: 1 }
+        status: { $ref: '#/components/schemas/HoldStatus' }
+        heldAt: { type: string, format: date-time, example: '2026-07-26T13:12:00Z' }
+        expiresAt:
+          type: string
+          format: date-time
+          description: Instante de expiração, derivado do parâmetro global de quinze minutos.
+          example: '2026-07-26T13:27:00Z'
+        releasedAt:
+          type: [string, 'null']
+          format: date-time
+          example: null
+        releaseReason:
+          type: [string, 'null']
+          description: Preenchido quando a retenção termina sem comprometimento.
+          example: null
+        committedAt:
+          type: [string, 'null']
+          format: date-time
+          example: null
+        reservationId:
+          type: [string, 'null']
+          format: uuid
+          description: Preenchido quando a retenção é convertida em capacidade comprometida.
+          example: null
+        invalidatedByBlockId:
+          type: [string, 'null']
+          format: uuid
+          description: Bloqueio emergencial que invalidou a retenção, quando aplicável.
+          example: null
+
+    CreateInventoryHoldRequest:
+      type: object
+      required: [reservationIntentId, accommodationId, checkIn, checkOut, units]
+      properties:
+        reservationIntentId: { type: string, format: uuid, example: c7b9e401-63af-4a28-9d15-3e806f2b7c4d }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, description: Exclusiva; deve ser posterior a checkIn., example: '2026-09-17' }
+        units: { type: integer, minimum: 1, maximum: 10, example: 1 }
+
+    InventoryCommitment:
+      type: object
+      description: Capacidade comprometida por uma reserva confirmada.
+      required: [holdId, reservationId, propertyId, accommodationId, checkIn, checkOut, units, committedAt, revalidated]
+      properties:
+        holdId: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+        reservationId: { type: string, format: uuid, example: 8a1e6f2c-4b90-4d75-8e33-c2f7b0d95a41 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-17' }
+        units: { type: integer, minimum: 1, example: 1 }
+        committedAt: { type: string, format: date-time, example: '2026-07-26T13:19:00Z' }
+        revalidated:
+          type: boolean
+          description: True quando a retenção já havia expirado e o saldo precisou ser reavaliado antes de comprometer.
+          example: false
+
+    CommitInventoryHoldRequest:
+      type: object
+      required: [reservationId]
+      properties:
+        reservationId:
+          type: string
+          format: uuid
+          description: Reserva confirmada em D03 que consumirá a capacidade retida.
+          example: 8a1e6f2c-4b90-4d75-8e33-c2f7b0d95a41
+
+    # ── Métricas ──
+    InventoryMetrics:
+      type: object
+      required: [period, unbackedSales, offersWithoutAllotment, slaCompliance, inventoryCoverage, emergencyBlockLatency, outOfWindowExposure, holdExpiration]
+      properties:
+        period: { $ref: '#/components/schemas/DateRange' }
+        unbackedSales:
+          type: object
+          description: Reservas confirmadas sem saldo disponível na data. Meta zero desde a Onda A.
+          required: [count, target]
+          properties:
+            count: { type: integer, minimum: 0, example: 0 }
+            target: { type: integer, example: 0 }
+        offersWithoutAllotment:
+          type: object
+          description: Acomodações expostas a D01 sem allotment vigente. Meta zero desde a Onda A.
+          required: [count, target]
+          properties:
+            count: { type: integer, minimum: 0, example: 0 }
+            target: { type: integer, example: 0 }
+        slaCompliance:
+          type: object
+          description: Solicitações tratadas em até quatro horas úteis dentro da janela.
+          required: [processedWithinSla, totalProcessed, percentage]
+          properties:
+            processedWithinSla: { type: integer, minimum: 0, example: 23 }
+            totalProcessed: { type: integer, minimum: 0, example: 23 }
+            percentage: { type: number, minimum: 0, maximum: 100, example: 100 }
+        inventoryCoverage:
+          type: object
+          description: Propriedades com allotment vigente na janela do piloto e no piso de duas unidades por categoria.
+          required: [propertiesWithActiveAllotment, propertiesMeetingCommercialFloor, target]
+          properties:
+            propertiesWithActiveAllotment: { type: integer, minimum: 0, example: 8 }
+            propertiesMeetingCommercialFloor: { type: integer, minimum: 0, example: 7 }
+            target: { type: integer, example: 8 }
+        emergencyBlockLatency:
+          type: object
+          description: Tempo entre a confirmação no painel e o corte de novas vendas. Meta de até 60 segundos.
+          required: [sampleSize, p95Seconds, maxSeconds, targetSeconds]
+          properties:
+            sampleSize: { type: integer, minimum: 0, example: 4 }
+            p95Seconds: { type: [number, 'null'], minimum: 0, example: 3.8 }
+            maxSeconds: { type: [number, 'null'], minimum: 0, example: 6.1 }
+            targetSeconds: { type: integer, example: 60 }
+        outOfWindowExposure:
+          type: object
+          description: Reservas confirmadas em datas alvo de aviso emergencial ainda pendente de abertura da janela.
+          required: [confirmedReservations, pendingEmergencyRequests]
+          properties:
+            confirmedReservations: { type: integer, minimum: 0, example: 0 }
+            pendingEmergencyRequests: { type: integer, minimum: 0, example: 1 }
+        holdExpiration:
+          oneOf:
+            - type: object
+              required: [created, expired, expirationRate]
+              properties:
+                created: { type: integer, minimum: 0, example: 140 }
+                expired: { type: integer, minimum: 0, example: 21 }
+                expirationRate: { type: number, minimum: 0, maximum: 100, example: 15 }
+            - { type: 'null' }
+          description: Null enquanto a Onda B não estiver em produção.
+
+    # ── Erros ──
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details com extensões estáveis da LocalizeStay.
+      required: [type, title, status, code, traceId]
+      properties:
+        type: { type: string, format: uri-reference, example: https://api.localizestay.com/problems/insufficient-availability }
+        title: { type: string, example: Saldo insuficiente para a estadia }
+        status: { type: integer, minimum: 400, maximum: 599, example: 422 }
+        detail: { type: [string, 'null'], example: Não há saldo disponível em ao menos uma noite da estadia. }
+        instance: { type: [string, 'null'], format: uri-reference, example: /api/v1/inventory-holds }
+        code: { type: string, example: INSUFFICIENT_AVAILABILITY }
+        traceId: { type: string, example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/ValidationError' }
+          example: []
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Extensão específica do erro. Contratos estáveis por code:
+            INSUFFICIENT_FREE_BALANCE e EMERGENCY_BLOCK_CONFIRMATION_REQUIRED usam freeBalanceByDate;
+            INSUFFICIENT_AVAILABILITY e COMMITMENT_WITHOUT_AVAILABILITY usam unavailableDates;
+            ALLOTMENT_BELOW_COMMITTED usa conflictingDates;
+            ALLOTMENT_PERIOD_OVERLAP usa conflictingAllotmentId, conflictingStartDate e conflictingEndDate.
+          example:
+            unavailableDates: ['2026-09-15']
+
+    ValidationError:
+      type: object
+      required: [field, code, message]
+      properties:
+        field: { type: string, example: units }
+        code: { type: string, example: EXCEEDS_FREE_BALANCE }
+        message: { type: string, example: Reduza a quantidade ou registre um bloqueio emergencial. }
+
+    # ── Eventos de domínio ──
+    DomainEventEnvelope:
+      type: object
+      description: Envelope comum a todos os eventos de D02, publicados por outbox transacional.
+      required: [eventId, eventType, eventVersion, occurredAt, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, example: 2b6e0a5c-19f4-4c8d-a7b1-5f30c4e7d982 }
+        eventType: { type: string, example: oferta-inventario.inventario-bloqueado }
+        eventVersion: { type: integer, minimum: 1, example: 1 }
+        occurredAt: { type: string, format: date-time, example: '2026-07-26T13:12:04Z' }
+        correlationId: { type: string, format: uuid, example: 9c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f }
+        causationId: { type: [string, 'null'], format: uuid, example: null }
+        data: { type: object, additionalProperties: true }
+
+    InventoryBlockedEventData:
+      type: object
+      description: Payload de oferta-inventario.inventario-bloqueado.
+      required: [blockId, propertyId, accommodationId, type, startDate, endDate, units, blocksEntireAccommodation, salesStoppedAt]
+      properties:
+        blockId: { type: string, format: uuid, example: b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        type: { $ref: '#/components/schemas/BlockType' }
+        startDate: { type: string, format: date, example: '2026-09-14' }
+        endDate: { type: string, format: date, example: '2026-09-16' }
+        units: { type: integer, minimum: 1, example: 3 }
+        blocksEntireAccommodation: { type: boolean, example: true }
+        salesStoppedAt: { type: string, format: date-time, example: '2026-07-26T13:12:04Z' }
+
+    BlockAffectsReservationEventData:
+      type: object
+      description: Payload de oferta-inventario.bloqueio-afeta-reserva; caso crítico de prioridade máxima para D05.
+      required: [blockId, propertyId, accommodationId, affectedReservations]
+      properties:
+        blockId: { type: string, format: uuid, example: b41d7a90-6c2e-4f18-84b7-2ad9f0c31e77 }
+        propertyId: { type: string, format: uuid, example: 9547f6b8-c85d-47b6-a683-13306c20f862 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        affectedReservations:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/AffectedReservation' }
+
+    InventoryHeldEventData:
+      type: object
+      description: Payload de oferta-inventario.inventario-retido.
+      required: [holdId, reservationIntentId, accommodationId, checkIn, checkOut, units, expiresAt]
+      properties:
+        holdId: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+        reservationIntentId: { type: string, format: uuid, example: c7b9e401-63af-4a28-9d15-3e806f2b7c4d }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-17' }
+        units: { type: integer, minimum: 1, example: 1 }
+        expiresAt: { type: string, format: date-time, example: '2026-07-26T13:27:00Z' }
+
+    HoldExpiredEventData:
+      type: object
+      description: Payload de oferta-inventario.retencao-expirada.
+      required: [holdId, reservationIntentId, expiredAt]
+      properties:
+        holdId: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+        reservationIntentId: { type: string, format: uuid, example: c7b9e401-63af-4a28-9d15-3e806f2b7c4d }
+        expiredAt: { type: string, format: date-time, example: '2026-07-26T13:27:00Z' }
+
+    InventoryReleasedEventData:
+      type: object
+      description: Payload de oferta-inventario.inventario-liberado.
+      required: [accommodationId, checkIn, checkOut, units, releaseReason]
+      properties:
+        holdId:
+          type: [string, 'null']
+          format: uuid
+          description: Null quando a liberação decorre da remoção de um bloqueio, e não do fim de uma retenção.
+          example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983
+        blockId: { type: [string, 'null'], format: uuid, example: null }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-17' }
+        units: { type: integer, minimum: 1, example: 1 }
+        releaseReason:
+          type: string
+          enum: [expired, reservationNotCompleted, checkoutAbandoned, operationalCorrection, emergencyBlock, blockRemoved]
+          description: Origem da devolução de capacidade ao saldo vendável.
+          example: expired
+
+    InventoryCommittedEventData:
+      type: object
+      description: Payload de oferta-inventario.inventario-comprometido.
+      required: [holdId, reservationId, accommodationId, checkIn, checkOut, units, committedAt, revalidated]
+      properties:
+        holdId: { type: string, format: uuid, example: 5d2f8b41-9c3a-4e07-b6d8-71a4f0e2c983 }
+        reservationId: { type: string, format: uuid, example: 8a1e6f2c-4b90-4d75-8e33-c2f7b0d95a41 }
+        accommodationId: { type: string, format: uuid, example: 7332fc6e-71aa-43cd-90b4-d2fd99c97787 }
+        checkIn: { type: string, format: date, example: '2026-09-14' }
+        checkOut: { type: string, format: date, example: '2026-09-17' }
+        units: { type: integer, minimum: 1, example: 1 }
+        committedAt: { type: string, format: date-time, example: '2026-07-26T13:19:00Z' }
+        revalidated: { type: boolean, example: false }
+
+# ─── Eventos de domínio ──────────────────────────────────────────────────────
+# Eventos rodam in-process com outbox transacional (ADR-0002). Os schemas de
+# payload são normativos e independem da localização do transporte.
+x-domain-events:
+  envelope: '#/components/schemas/DomainEventEnvelope'
+  publishes:
+    - name: oferta-inventario.inventario-bloqueado
+      wave: A
+      trigger: Bloqueio aplicado, planejado ou emergencial.
+      dataSchema: '#/components/schemas/InventoryBlockedEventData'
+      consumers: [D01, D07, D09]
+    - name: oferta-inventario.bloqueio-afeta-reserva
+      wave: A
+      trigger: Bloqueio emergencial ou suspensão de curadoria alcança datas com reserva confirmada. Nenhuma reserva é cancelada ou alterada.
+      dataSchema: '#/components/schemas/BlockAffectsReservationEventData'
+      consumers: [D05]
+    - name: oferta-inventario.inventario-retido
+      wave: B
+      trigger: Retenção criada no início do checkout.
+      dataSchema: '#/components/schemas/InventoryHeldEventData'
+      consumers: [D03, D09]
+    - name: oferta-inventario.retencao-expirada
+      wave: B
+      trigger: Prazo da retenção terminou sem confirmação.
+      dataSchema: '#/components/schemas/HoldExpiredEventData'
+      consumers: [D03, D09]
+    - name: oferta-inventario.inventario-liberado
+      wave: B
+      trigger: Capacidade retida ou bloqueada volta a ser vendável.
+      dataSchema: '#/components/schemas/InventoryReleasedEventData'
+      consumers: [D01, D03, D09]
+    - name: oferta-inventario.inventario-comprometido
+      wave: B
+      trigger: Retenção convertida em capacidade comprometida pela confirmação da reserva.
+      dataSchema: '#/components/schemas/InventoryCommittedEventData'
+      consumers: [D03, D07, D09]
+  subscribes:
+    - name: reserva.intencao-iniciada
+      wave: B
+      effect: Aciona a criação da retenção; equivale a POST /inventory-holds.
+    - name: reserva.confirmada
+      wave: B
+      effect: Aciona o comprometimento; equivale a POST /inventory-holds/{holdId}/commitment.
+    - name: reserva.nao-concluida
+      wave: B
+      effect: Aciona a liberação antecipada; equivale a DELETE /inventory-holds/{holdId}. Idempotente sobre retenção já encerrada.
+    - name: curadoria-qualidade.propriedade-aprovada
+      wave: A
+      effect: Satisfaz o gate propertyApproved e encerra o bloqueio de origem curationSuspension.
+    - name: curadoria-qualidade.propriedade-suspensa
+      wave: A
+      effect: Cria bloqueio de origem curationSuspension em todas as acomodações da propriedade, com efeito equivalente ao emergencial, sem cancelar reservas confirmadas.

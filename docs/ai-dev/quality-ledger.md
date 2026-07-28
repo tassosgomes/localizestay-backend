@@ -1659,3 +1659,8 @@ Sugestão de melhoria no:
 - TechSpec: N/A
 - Template de Task: N/A
 - Skill: N/A
+## [2026-07-27] | PRD: prd-controlar-allotment-disponibilidade-bloqueios-e-retencoes | Task: 3.0
+
+### Problema bloqueante
+
+O critério canônico da task deve corrigir a data de `2026-07-26T11:00:00Z` para `2026-07-27T11:00:00Z`, ou então corrigir o instante de entrada/regra de dias úteis. A data atual é domingo, incompatível com a janela de segunda a sábado; a implementação e os testes seguiram a regra coerente.

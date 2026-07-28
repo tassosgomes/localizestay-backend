@@ -138,6 +138,36 @@ public static class SecurityServiceCollectionExtensions
                 policy.AuthenticationSchemes.Add(AuthenticationScheme);
                 policy.RequireAuthenticatedUser();
                 policy.AddRequirements(new PermissionRequirement(CommercialOfferPermissions.Metrics));
+            })
+            .AddPolicy(InventoryControlPermissions.Read, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(InventoryControlPermissions.Read));
+            })
+            .AddPolicy(InventoryControlPermissions.Write, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(InventoryControlPermissions.Write));
+            })
+            .AddPolicy(InventoryControlPermissions.Block, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(InventoryControlPermissions.Block));
+            })
+            .AddPolicy(InventoryControlPermissions.Hold, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(InventoryControlPermissions.Hold));
+            })
+            .AddPolicy(InventoryControlPermissions.Metrics, policy =>
+            {
+                policy.AuthenticationSchemes.Add(AuthenticationScheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new PermissionRequirement(InventoryControlPermissions.Metrics));
             });
 
         return services;
